@@ -17,7 +17,7 @@ bug-reports:        https://github.com/dagit/logict-sequence/issues
 license:            MIT
 license-file:       LICENSE
 author:             Jason Dagit
-maintainer:         Jason dagit <dagitj@gmail.com>
+maintainer:         Jason Dagit <dagitj@gmail.com>
 homepage:           https://github.com/dagit/logict-sequence
 build-type:         Simple
 
