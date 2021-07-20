@@ -36,6 +36,8 @@ import Control.Monad.IO.Class ()
 import Data.TASequence.FastCatQueue as TA
 import Data.SequenceClass as S
 
+import Control.Monad.Logic.Sequence.AsUnitLoop (AsUnitLoop (..))
+
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid(..))
 #endif
@@ -56,9 +58,6 @@ import qualified Data.Traversable as T
 -- well.
 
 type Queue = MSeq FastTCQueue
-
-data AsUnitLoop a b c where
-  UL :: !a -> AsUnitLoop a () ()
 
 newtype MSeq s a = MSeq { getMS :: s (AsUnitLoop a) () () }
 
