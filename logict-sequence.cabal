@@ -27,7 +27,8 @@ copyright: (c) 2021 Jason Dagit,
 -- category:
 extra-source-files: CHANGELOG.md
                     README.md
-tested-with: GHC==8.10.4
+tested-with: GHC ==7.4.2 GHC ==7.6.3 GHC ==7.8.4 GHC ==7.10.3 GHC ==8.0.2 GHC ==8.2.2 GHC ==8.4.4 GHC ==8.6.5 GHC ==8.8.4 GHC ==8.10.4
+
 
 source-repository head
   type: git
@@ -41,7 +42,7 @@ library
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends: base >=4.3 && <5
+    build-depends: base >=4.5 && <5
     build-depends: mtl >=2.0 && <2.3
     build-depends: type-aligned >= 0.9.6 && < 0.10
     build-depends: sequence >= 0.9.8 && < 0.10
