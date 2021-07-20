@@ -25,13 +25,6 @@ module Control.Monad.Logic.Sequence
 )
 where
 
--- | Based on the LogicT improvements in the paper, Reflection without
--- Remorse. Code is based on the code provided in:
--- https://github.com/atzeus/reflectionwithoutremorse
---
--- Note: that code is provided under an MIT license, so we use that as
--- well.
-
 import Control.Applicative
 import Control.Monad
 import qualified Control.Monad.Fail as Fail
@@ -53,6 +46,14 @@ import Data.Semigroup (Semigroup(..))
 
 import qualified Data.Foldable as F
 import qualified Data.Traversable as T
+
+
+-- | Based on the LogicT improvements in the paper, Reflection without
+-- Remorse. Code is based on the code provided in:
+-- https://github.com/atzeus/reflectionwithoutremorse
+--
+-- Note: that code is provided under an MIT license, so we use that as
+-- well.
 
 type Queue = MSeq FastTCQueue
 
