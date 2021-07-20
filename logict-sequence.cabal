@@ -1,6 +1,6 @@
-cabal-version:      2.4
+cabal-version:      >=1.10
 name:               logict-sequence
-version:            0.1.0.0
+version:            0.1.0.1
 
 -- A short (one-line) description of the package.
 synopsis:           A backtracking logic-programming monad with asymptotic improvements to msplit
@@ -19,6 +19,7 @@ license-file:       LICENSE
 author:             Jason Dagit
 maintainer:         Jason dagit <dagitj@gmail.com>
 homepage:           https://github.com/dagit/logict-sequence
+build-type:         Simple
 
 -- A copyright notice.
 copyright: (c) 2021 Jason Dagit,
