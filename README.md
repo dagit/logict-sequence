@@ -1,3 +1,4 @@
+[![Haskell-CI](https://github.com/dagit/logict-sequence/actions/workflows/ci.yml/badge.svg)](https://github.com/dagit/logict-sequence/actions/workflows/ci.yml)
 # LogicT-Sequence
 
 Provides a variant of the `LogicT` monad that should have
