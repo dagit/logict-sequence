@@ -36,6 +36,7 @@ source-repository head
 
 library
     exposed-modules:  Control.Monad.Logic.Sequence
+                    , Control.Monad.Logic.Sequence.AsUnitLoop
 
     -- Modules included in this library but not exported.
     -- other-modules:
