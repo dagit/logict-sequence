@@ -84,20 +84,38 @@ pattern UL a <- (mkSafeUnitLoop -> SafeUnitLoop a)
   where
     UL a = UnsafeUL a
 
+-- | Extract an @a@ from an @'AsUnitLoop' a b c@, throwing away the type information.
+--
+-- This function can be useful for avoiding "untouchable" type variable errors that
+-- can occur when pattern matching with `UL` in certain contexts. In GHC 9.0.1
+-- and later, this function may also be be optimized better than using 'UL' for
+-- the purpose.
+getUL :: AsUnitLoop a b c -> a
+-- Why don't we match on UL here? That used to be fine—GHC's coercion optimizer
+-- would figure out that we don't need the type equalities magicked up by
+-- the UL pattern synonym here, and promptly erase the unsafe coercion and
+-- the optimization barrier that implies. Since 9.0.1, however, GHC has gotten
+-- more careful about unsafe coercions (see Note [Implementing unsafeCoerce]
+-- in https://hackage.haskell.org/package/base-4.15.0.0/docs/src/Unsafe-Coerce.html
+-- for the details). This is important for type safety in some cases, but it
+-- delays erasure of unsafe coercions until much later in compilation. Will
+-- that hurt us here? I can't say for sure, but there's no harm in sidestepping
+-- the problem.
+getUL (UnsafeUL a) = a
+
 #else  /* When we don't have pattern synonyms */
 data AsUnitLoop a b c where
   UL :: !a -> AsUnitLoop a () ()
-#endif
 
--- | Extract an `a` from an `AsUnitLoop a b c`, throwing away the type information.
+-- | Extract an @a@ from an @'AsUnitLoop' a b c@, throwing away the type information.
+--
 -- This function can be useful for avoiding "untouchable" type variable errors that
--- can occur when pattern matching with `UL` in certain contexts.
+-- can occur when pattern matching with `UL` in certain contexts. In GHC 9.0.1
+-- and later, this function may also be be optimized better than using 'UL' for
+-- the purpose.
 getUL :: AsUnitLoop a b c -> a
--- Note: GHC's coercion optimizer is clever enough to see that
--- the type equalities magicked up by UL aren't necessary here,
--- so it removes the unsafe coercion.
 getUL (UL a) = a
-
+#endif
 
 -- ----------------------------
 -- Instances, mostly boring
@@ -130,14 +148,16 @@ instance Ord a => Ord (AsUnitLoop a b c) where
   compare = compare `on` getUL
 
 #if MIN_VERSION_base(4,9,0)
+-- | @(<>)@ is unconditionally strict in the first argument.
 instance Semigroup a => Semigroup (AsUnitLoop a b c) where
-  UL x <> UL y = UL (x <> y)
+  UL x <> uly = UL (x <> getUL uly)
 #endif
 
+-- | @mappend@ is unconditionally strict in the first argument.
 instance (Monoid a, b ~ (), c ~ ()) => Monoid (AsUnitLoop a b c) where
   mempty = UL mempty
 #if MIN_VERSION_base(4,11,0)
   mappend = (<>)
 #else
-  mappend (UL x) (UL y) = UL (mappend x y)
+  mappend (UL x) uly = UL (mappend x (getUL uly))
 #endif
