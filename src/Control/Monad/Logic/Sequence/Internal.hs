@@ -127,17 +127,26 @@ toViewIdentity s = go s
   where
     go x = case viewl x of
       EmptyL -> Empty
-      (Identity Empty) S.:< t -> toViewIdentity t
+      (Identity Empty) S.:< t -> go t
       (Identity (hi :< SeqT ti)) S.:< t -> hi :< SeqT (ti S.>< t)
 {-# INLINE[1] toViewIdentity #-}
 
 {-# RULES
-    "toView/fromView" forall m. fromView (toView m) = m;
+    "toView/fromView" [4] forall m. fromView (toView m) = m;
+    "fromView/toView" [4] forall m. toView (fromView m) = m;
     "toViewIdentity/fromView" [2] forall m. fromView (Identity (toViewIdentity m)) = SeqT m;
-    "fromView/toView" forall m. toView (fromView m) = m;
     "toViewIdentity"  [3] toView = Identity . toViewIdentity . runSeqT;
+    "toView/>>=" [4] forall m f. toView m >>= f = f (toViewIdentity (runSeqT m));
   #-}
-
+{-
+    "toView/>>=/fromView" [4] forall m f g. fromView (toView (fromView (toView m `seqBind` f)) `seqBind` g) =
+                                            fromView ((toView m `seqBind` f) `seqBind` g);
+    "toView/seqAlt/fromView" [4] forall m f g.
+                             toView (fromView (toView m `seqAlt` f)) `seqAlt` g =
+                             (toView m `seqAlt` f) `seqAlt` g;
+    "toView/fromView/collapse" [4] forall f m. toView (fromView (f (toView m))) = f (toView m);
+    "toView/fromView/compose" [4] forall f g m. fromView (g (toView (fromView (f (toView m))))) = fromView (g (f (toView m)));
+-}
 
 {-
 Theorem: toView . fromView = id
@@ -166,11 +175,25 @@ m >>= \x -> case x of
 single :: Monad m => a -> m (View m a)
 single a = return (a :< mzero)
 {-# INLINE CONLIKE single #-}
-{-# SPECIALIZE INLINE single :: a -> Identity (View Identity a) #-}
 
 instance Monad m => Functor (SeqT m) where
   {-# INLINEABLE fmap #-}
-  fmap f xs = xs >>= return . f
+  fmap = seqFmap
+
+seqFmap :: Monad m => (a -> b) -> SeqT m a -> SeqT m b
+seqFmap f xs = xs >>= return . f
+{-# INLINEABLE[2] seqFmap #-}
+
+seqFmapIdentity :: (a -> b) -> Seq a -> Seq b
+seqFmapIdentity f = go . toViewIdentity . runSeqT
+  where
+  go Empty = fromView (Identity Empty)
+  go (h :< t) = fromView (Identity (f h :< go (toViewIdentity (runSeqT t))))
+{-# INLINEABLE[2] seqFmapIdentity #-}
+
+{-# RULES
+      "seqFmapIdentity" [3] seqFmap = seqFmapIdentity;
+  #-}
 
 instance Monad m => Applicative (SeqT m) where
   {-# INLINE CONLIKE pure #-}
@@ -191,9 +214,9 @@ seqAlt m n = fromView (toView m >>= \x -> case x of
 {-# INLINE [2] seqAlt #-}
 
 seqAltIdentity :: Seq a -> Seq a -> Seq a
-seqAltIdentity m n = case toView m of
-  Identity Empty -> n
-  Identity (h :< t) -> fromView (Identity (h :< SeqT (runSeqT t S.>< runSeqT n)))
+seqAltIdentity m n = case toViewIdentity (runSeqT m) of
+  Empty -> n
+  (h :< t) -> fromView (Identity (h :< SeqT (runSeqT t S.>< runSeqT n)))
 {-# INLINE[2] seqAltIdentity #-}
 
 {-# RULES
@@ -203,7 +226,7 @@ seqAltIdentity m n = case toView m of
 
 instance Monad m => Monad (SeqT m) where
   {-# INLINE CONLIKE return #-}
-  {-# INLINEABLE (>>=) #-}
+  {- NOINLINE [1] (>>=) #-}
   return = fromView . single
   (>>=) = seqBind
 #if !MIN_VERSION_base(4,13,0)
@@ -222,9 +245,9 @@ seqBind a b = go a b
 seqBindIdentity :: Seq a -> (a -> Seq b) -> Seq b
 seqBindIdentity a b = go a b
   where
-  go m f = case toView m of
-    Identity Empty -> fromView (Identity Empty)
-    Identity (h :< t) -> f h `seqAltIdentity` (t `go` f)
+  go m f = case toViewIdentity (runSeqT m) of
+    Empty -> fromView (Identity Empty)
+    h :< t -> f h `seqAltIdentity` (t `go` f)
 {-# INLINEABLE[2] seqBindIdentity #-}
 
 {-# RULES
@@ -274,9 +297,9 @@ seqMsplit (toView -> m) = fromView $ do
 {-# INLINE[2] seqMsplit #-}
 
 seqMsplitIdentity :: Seq a -> Seq (Maybe (a, Seq a))
-seqMsplitIdentity m = fromView (case toView m of
-  Identity Empty -> single Nothing
-  Identity (a :< t) -> single (Just (a,t)))
+seqMsplitIdentity m = fromView (case toViewIdentity (runSeqT m) of
+  Empty -> single Nothing
+  a :< t -> single (Just (a,t)))
 {-# INLINE[2] seqMsplitIdentity #-}
 
 {-# RULES
@@ -287,8 +310,19 @@ observeAllT :: Monad m => SeqT m a -> m [a]
 observeAllT (toView -> m) = m >>= go where
   go (a :< t) = liftM (a:) (toView t >>= go)
   go _ = return []
-{-# INLINEABLE observeAllT #-}
-{-# SPECIALIZE INLINE observeAllT :: Seq a -> Identity [a] #-}
+{-# INLINEABLE [2] observeAllT #-}
+
+observeAllTIdentity :: Seq a -> Identity [a]
+observeAllTIdentity m = go (toViewIdentity (runSeqT m))
+  where
+  go (a :< t) = liftM (a:) (go (toViewIdentity (runSeqT t)))
+  go _ = Identity []
+{-# INLINEABLE [2] observeAllTIdentity #-}
+
+{-# RULES
+      "observeAllTIdentity" [3] observeAllT = observeAllTIdentity;
+  #-}
+
 
 #if !MIN_VERSION_base(4,13,0)
 observeT :: Monad m => SeqT m a -> m a
