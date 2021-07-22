@@ -72,6 +72,7 @@ data SafeUnitLoop a b c where
 -- and break the world. We ensure that `oops` is safely _|_.
 mkSafeUnitLoop :: AsUnitLoop a b c -> SafeUnitLoop a b c
 mkSafeUnitLoop (UnsafeUL a) = unsafeCoerce (SafeUnitLoop a)
+{-# INLINE mkSafeUnitLoop #-}
 
 -- | A bidirectional pattern synonym for 'AsUnitLoop'. See the documentation
 -- there.
@@ -114,6 +115,7 @@ data AsUnitLoop a b c where
 getUL :: AsUnitLoop a b c -> a
 getUL (UL a) = a
 #endif
+{-# INLINE getUL #-}
 
 -- ----------------------------
 -- Instances, mostly boring

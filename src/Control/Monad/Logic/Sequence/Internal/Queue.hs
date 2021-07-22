@@ -47,25 +47,35 @@ type Queue = MSeq FastTCQueue
 newtype MSeq s a = MSeq { getMS :: s (AsUnitLoop a) () () }
 
 instance TASequence s => Sequence (MSeq s) where
+  {-# INLINE empty #-}
   empty = MSeq tempty
+  {-# INLINE singleton #-}
   singleton = MSeq . tsingleton . UL
+  {-# INLINE (><) #-}
   l >< r = MSeq (getMS l TA.>< getMS r)
+  {-# INLINE (|>) #-}
   l |> x = MSeq (getMS l TA.|> UL x)
+  {-# INLINE (<|) #-}
   x <| r = MSeq (UL x TA.<| getMS r)
+  {-# INLINE viewl #-}
   viewl s = case tviewl (getMS s) of
     TAEmptyL -> EmptyL
     UL h TA.:< t -> h S.:< MSeq t
+  {-# INLINE viewr #-}
   viewr s = case tviewr (getMS s) of
     TAEmptyR -> EmptyR
     p TA.:> UL l -> MSeq p S.:> l
 
 #if MIN_VERSION_base(4,9,0)
 instance TASequence s => Semigroup (MSeq s a) where
+  {-# INLINE (<>) #-}
   (<>) = (S.><)
 #endif
 
 instance TASequence s => Monoid (MSeq s a) where
+  {-# INLINE mempty #-}
   mempty = S.empty
+  {-# INLINE mappend #-}
 #if MIN_VERSION_base(4,9,0)
   mappend = (<>)
 #else
@@ -73,18 +83,21 @@ instance TASequence s => Monoid (MSeq s a) where
 #endif
 
 instance TASequence s => Functor (MSeq s) where
+  {-# INLINEABLE fmap #-}
   fmap f = go where
     go q = case viewl q of
       EmptyL -> S.empty
       h S.:< t -> f h S.<| go t
 
 instance TASequence s => F.Foldable (MSeq s) where
+  {-# INLINEABLE foldMap #-}
   foldMap f = fm where
     fm q = case viewl q of
       EmptyL -> mempty
       h S.:< t -> f h `mappend` fm t
 
 instance TASequence s => T.Traversable (MSeq s) where
+  {-# INLINEABLE sequenceA #-}
   sequenceA q = case viewl q of
     EmptyL -> pure S.empty
     h S.:< t -> pure (S.<|) <*> h <*> T.sequenceA t

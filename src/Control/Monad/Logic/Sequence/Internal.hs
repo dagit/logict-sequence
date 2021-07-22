@@ -109,6 +109,7 @@ type Seq = SeqT Identity
 
 fromView :: m (View m a) -> SeqT m a
 fromView = SeqT . singleton
+{-# INLINE fromView #-}
 
 toView :: Monad m => SeqT m a -> m (View m a)
 toView (SeqT s) = case viewl s of
@@ -116,6 +117,8 @@ toView (SeqT s) = case viewl s of
   h S.:< t -> h >>= \x -> case x of
     Empty -> toView (SeqT t)
     hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
+{-# INLINEABLE toView #-}
+{-# SPECIALIZE INLINE toView :: Seq a -> Identity (View Identity a) #-}
 
 {-
 Theorem: toView . fromView = id
@@ -143,15 +146,23 @@ m >>= \x -> case x of
 
 single :: Monad m => a -> m (View m a)
 single a = return (a :< mzero)
+{-# INLINE single #-}
+{-# SPECIALIZE INLINE single :: a -> Identity (View Identity a) #-}
 
 instance Monad m => Functor (SeqT m) where
+  {-# INLINEABLE fmap #-}
   fmap f xs = xs >>= return . f
 
 instance Monad m => Applicative (SeqT m) where
+  {-# INLINE pure #-}
+  {-# INLINE (<*>) #-}
   pure = fromView . single
   (<*>) = liftM2 id
 
 instance Monad m => Alternative (SeqT m) where
+  {-# INLINE empty #-}
+  {-# INLINEABLE (<|>) #-}
+  {-# SPECIALIZE INLINE (<|>) :: Seq a -> Seq a -> Seq a #-}
   empty = SeqT S.empty
   (toView -> m) <|> n = fromView (m >>= \x -> case x of
       Empty -> toView n
@@ -159,37 +170,51 @@ instance Monad m => Alternative (SeqT m) where
     where cat (SeqT l) (SeqT r) = SeqT (l S.>< r)
 
 instance Monad m => Monad (SeqT m) where
+  {-# INLINE return #-}
+  {-# INLINEABLE (>>=) #-}
+  {-# SPECIALIZE INLINE (>>=) :: Seq a -> (a -> Seq b) -> Seq b #-}
   return = fromView . single
   (toView -> m) >>= f = fromView (m >>= \x -> case x of
     Empty -> return Empty
     h :< t -> toView (f h `mplus` (t >>= f)))
 #if !MIN_VERSION_base(4,13,0)
+  {-# INLINEABLE fail #-}
   fail = Fail.fail
 #endif
 
 instance Monad m => Fail.MonadFail (SeqT m) where
+  {-# INLINEABLE fail #-}
   fail _ = SeqT S.empty
 
 instance Monad m => MonadPlus (SeqT m) where
+  {-# INLINE mzero #-}
+  {-# INLINE mplus #-}
   mzero = Control.Applicative.empty
   mplus = (<|>)
 
 #if MIN_VERSION_base(4,9,0)
 instance Monad m => Semigroup (SeqT m a) where
+  {-# INLINE (<>) #-}
+  {-# INLINE sconcat #-}
   (<>) = mplus
   sconcat = foldr1 mplus
 #endif
 
 instance Monad m => Monoid (SeqT m a) where
+  {-# INLINE mempty #-}
+  {-# INLINE mappend #-}
+  {-# INLINE mconcat #-}
   mempty = SeqT S.empty
   mappend = (<|>)
   mconcat = F.asum
 
 instance MonadTrans SeqT where
+  {-# INLINE lift #-}
   lift m = fromView (m >>= single)
 
 instance Monad m => MonadLogic (SeqT m) where
   {-# INLINE msplit #-}
+  {-# SPECIALIZE INLINE msplit :: Seq a -> Seq (Maybe (a, Seq a)) #-}
   msplit (toView -> m) = fromView $ do
     r <- m
     case r of
@@ -198,8 +223,10 @@ instance Monad m => MonadLogic (SeqT m) where
 
 observeAllT :: Monad m => SeqT m a -> m [a]
 observeAllT (toView -> m) = m >>= go where
-  go (a :< t) = liftM (a:) (observeAllT t)
+  go (a :< t) = liftM (a:) (toView t >>= go)
   go _ = return []
+{-# INLINEABLE observeAllT #-}
+{-# SPECIALIZE INLINE observeAllT :: Seq a -> Identity [a] #-}
 
 #if !MIN_VERSION_base(4,13,0)
 observeT :: Monad m => SeqT m a -> m a
@@ -209,23 +236,29 @@ observeT :: MonadFail m => SeqT m a -> m a
 observeT (toView -> m) = m >>= go where
   go (a :< _) = return a
   go Empty = fail "No results."
+{-# INLINE observeT #-}
 
 observe :: Seq a -> a
 observe (toView -> m) = case runIdentity m of
   a :< _ -> a
   Empty -> error "No results."
+{-# INLINE observe #-}
 
 observeMaybeT :: Monad m => SeqT m (Maybe a) -> m (Maybe a)
 observeMaybeT (toView -> m) = m >>= go where
   go (Just a :< _) = return (Just a)
   go (Nothing :< rest) = toView rest >>= go
   go Empty = return Nothing
+{-# INLINEABLE observeMaybeT #-}
 
 observeMaybe :: Seq (Maybe a) -> Maybe a
 observeMaybe = runIdentity . observeMaybeT
+{-# INLINE observeMaybe #-}
 
 observeAll :: Seq a -> [a]
 observeAll = runIdentity . observeAllT
+{-# INLINE observeAll #-}
 
 instance MonadIO m => MonadIO (SeqT m) where
+  {-# INLINE liftIO #-}
   liftIO = lift . liftIO
