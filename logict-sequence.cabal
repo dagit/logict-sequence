@@ -62,15 +62,22 @@ library
     include-dirs: include
 
 benchmark logic-performance
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      bench
-  main-is:             logic-performance.hs
-  build-depends:       base,
-                       mtl,
-                       containers,
-                       list-t,
-                       logict,
-                       gauge,
-                       logict-sequence
-  ghc-options:         -Wall -O2 -threaded
-  default-language:    Haskell2010
+  if impl(ghc >= 8.0.2)
+    type:                exitcode-stdio-1.0
+    hs-source-dirs:      bench
+    main-is:             logic-performance.hs
+    build-depends:       base,
+                         mtl,
+                         containers,
+                         list-t,
+                         logict,
+                         gauge,
+                         logict-sequence
+    ghc-options:         -Wall -O2 -threaded
+    default-language:    Haskell2010
+  else
+    type:                exitcode-stdio-1.0
+    hs-source-dirs:      bench
+    main-is:             do-nothing.hs
+    build-depends:       base
+    default-language:    Haskell2010
