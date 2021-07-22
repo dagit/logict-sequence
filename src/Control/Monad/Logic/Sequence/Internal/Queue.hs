@@ -47,9 +47,9 @@ type Queue = MSeq FastTCQueue
 newtype MSeq s a = MSeq { getMS :: s (AsUnitLoop a) () () }
 
 instance TASequence s => Sequence (MSeq s) where
-  {-# INLINE empty #-}
+  {-# INLINE CONLIKE empty #-}
   empty = MSeq tempty
-  {-# INLINE singleton #-}
+  {-# INLINE CONLIKE singleton #-}
   singleton = MSeq . tsingleton . UL
   {-# INLINE (><) #-}
   l >< r = MSeq (getMS l TA.>< getMS r)
