@@ -1,11 +1,9 @@
 {-# LANGUAGE CPP #-}
-#if __GLASGOW_HASKELL__ >= 804
--- TODO: check exactly which versions this works for
-#define USE_PATTERN_SYNONYMS 1
-#endif
+#include "logict-sequence.h"
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
+
 #ifdef USE_PATTERN_SYNONYMS
 {-# LANGUAGE PatternSynonyms #-}
 #endif
@@ -16,7 +14,7 @@
 {-# LANGUAGE Safe #-}
 #endif
 
-module Control.Monad.Logic.Sequence.AsUnitLoop
+module Control.Monad.Logic.Sequence.Internal.AsUnitLoop
 (   AsUnitLoop(UL)
   , getUL
 )
