@@ -79,7 +79,8 @@ data View m a = Empty | a :< SeqT m a
 --
 -- Using the 'MkSeqT' pattern synonym with 'getSeqT', you can (almost) pretend
 -- it's really defined this way! However, the real implementation is different,
--- so as to be more efficient in the face of deeply nested monadic binds.
+-- so as to be more efficient in the face of deeply left-associated `<|>` or
+-- `mplus` applications.
 newtype SeqT m a = SeqT (Queue (m (View m a)))
 
 #ifdef USE_PATTERN_SYNONYMS
@@ -104,7 +105,9 @@ pattern MkSeq{getSeq} <- (runIdentity . toView -> getSeq)
 -- @
 --
 -- Using the 'MkSeq' pattern synonym with 'getSeq', you can pretend it's
--- really defined this way!
+-- really defined this way! However, the real implementation is different,
+-- so as to be more efficient in the face of deeply left-associated `<|>`
+-- or `mplus` applications.
 type Seq = SeqT Identity
 
 fromView :: m (View m a) -> SeqT m a
