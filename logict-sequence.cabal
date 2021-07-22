@@ -27,6 +27,8 @@ copyright: (c) 2021 Jason Dagit,
 -- category:
 extra-source-files: CHANGELOG.md
                     README.md
+                    include/logict-sequence.h
+
 tested-with: GHC ==7.4.2 GHC ==7.6.3 GHC ==7.8.4 GHC ==7.10.3 GHC ==8.0.2 GHC ==8.2.2 GHC ==8.4.4 GHC ==8.6.5 GHC ==8.8.4 GHC ==8.10.4
 
 
@@ -36,7 +38,9 @@ source-repository head
 
 library
     exposed-modules:  Control.Monad.Logic.Sequence
-                    , Control.Monad.Logic.Sequence.AsUnitLoop
+                    , Control.Monad.Logic.Sequence.Internal
+                    , Control.Monad.Logic.Sequence.Internal.Queue
+                    , Control.Monad.Logic.Sequence.Internal.AsUnitLoop
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -55,3 +59,4 @@ library
     hs-source-dirs:   src
     default-language: Haskell2010
     ghc-options: -Wall -O2
+    include-dirs: include
