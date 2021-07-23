@@ -3,6 +3,15 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+#if __GLASGOW_HASKELL__ < 710
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+#endif
 
 #ifdef USE_PATTERN_SYNONYMS
 {-# LANGUAGE PatternSynonyms #-}
@@ -49,6 +58,7 @@ import Control.Monad.IO.Class
 import Data.SequenceClass hiding ((:<))
 import qualified Data.SequenceClass as S
 import Control.Monad.Logic.Sequence.Internal.Queue
+import qualified Text.Read as TR
 
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid(..))
@@ -59,6 +69,8 @@ import Data.Semigroup (Semigroup(..))
 #endif
 
 import qualified Data.Foldable as F
+import qualified Data.Traversable as T
+import GHC.Generics (Generic)
 
 
 -- | Based on the LogicT improvements in the paper, Reflection without
@@ -69,6 +81,15 @@ import qualified Data.Foldable as F
 -- well.
 
 data View m a = Empty | a :< SeqT m a
+  deriving Generic
+
+deriving instance (Show a, Show (SeqT m a)) => Show (View m a)
+deriving instance (Read a, Read (SeqT m a)) => Read (View m a)
+deriving instance (Eq a, Eq (SeqT m a)) => Eq (View m a)
+deriving instance (Ord a, Ord (SeqT m a)) => Ord (View m a)
+deriving instance Monad m => Functor (View m)
+deriving instance (F.Foldable m, Monad m) => F.Foldable (View m)
+deriving instance (T.Traversable m, Monad m) => T.Traversable (View m)
 
 instance Monad m => Functor (View m) where
   fmap _ Empty = Empty
@@ -153,6 +174,30 @@ m >>= \x -> case x of
   hi :< SeqT ti -> return (hi :< SeqT ti)
 = m
 -}
+
+instance (Show (m (View m a)), Monad m) => Show (SeqT m a) where
+  showsPrec d s = showParen (d > app_prec) $
+      showString "MkSeqT " . showsPrec (app_prec + 1) (toView s)
+    where app_prec = 10
+
+instance Read (m (View m a)) => Read (SeqT m a) where
+  readPrec = TR.parens $ TR.prec app_prec $ do
+      TR.Ident "MkSeqT" <- TR.lexP
+      m <- TR.step TR.readPrec
+      return (fromView m)
+    where app_prec = 10
+
+-- The Foldable and Traversable instances look surprising. Why don't they
+-- operate structurally, as `fmap` does? Well, I don't *think* the latter
+-- approach is guaranteed to produce the same results, because there are
+-- no laws about how the Foldable and Traversable instances for `m` relate to
+-- its Monad instance. fmap is special because parametricity guarantees
+-- uniqueness. I'd love to be proven wrong.
+instance (F.Foldable m, Monad m) => F.Foldable (SeqT m) where
+  foldMap f = F.foldMap (F.foldMap f) . toView
+
+instance (T.Traversable m, Monad m) => T.Traversable (SeqT m) where
+  traverse f = fmap fromView . T.traverse (T.traverse f) . toView
 
 single :: Monad m => a -> m (View m a)
 single a = return (a :< mzero)
