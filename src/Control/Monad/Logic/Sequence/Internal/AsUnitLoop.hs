@@ -6,6 +6,7 @@
 
 #ifdef USE_PATTERN_SYNONYMS
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RoleAnnotations #-}
 #endif
 
 #ifdef USE_PATTERN_SYNONYMS
@@ -26,14 +27,6 @@ import Data.Function (on)
 import Unsafe.Coerce
 #endif
 
-#if !MIN_VERSION_base(4,8,0)
-import Data.Monoid (Monoid(..))
-#endif
-
-#if MIN_VERSION_base(4,9,0) && !MIN_VERSION_base(4,11,0)
-import Data.Semigroup (Semigroup(..))
-#endif
-
 -- | @AsUnitLoop@ should be understood as a GADT defined thus:
 --
 -- @
@@ -48,6 +41,11 @@ import Data.Semigroup (Semigroup(..))
 newtype AsUnitLoop a b c = UnsafeUL a
 -- Key invariant: when creating a non-bottom value of type AsUnitLoop a b c, both
 -- b and c must be (). If you violate this condition, demons will come out of your nose!
+
+-- This role prevents
+--
+-- coerce :: forall a b c. AsUnitLoop a () () -> AsUnitLoop a b c
+type role AsUnitLoop representational nominal nominal
 {-# COMPLETE UL #-}
 
 -- This is the true meaning of AsUnitLoop; we use it to implement the UL pattern synonym.
@@ -147,17 +145,22 @@ instance Eq a => Eq (AsUnitLoop a b c) where
 instance Ord a => Ord (AsUnitLoop a b c) where
   compare = compare `on` getUL
 
-#if MIN_VERSION_base(4,9,0)
+{-
+We don't need these instances. More importantly, there are actually two options
+for the Semigroup/Monoid instances:
+
+1. Impose (b ~ (), c ~ ()) on Semigroup (AsUnitLoop a b c).
+2. Make (<>) (and therefore mappend) unconditionally strict
+   in one argument, presumably the first.
+
+Neither of these options is obviously better or more useful, so under the
+circumstances it's best to punt.
+
 -- | @(<>)@ is unconditionally strict in the first argument.
 instance Semigroup a => Semigroup (AsUnitLoop a b c) where
   UL x <> uly = UL (x <> getUL uly)
-#endif
 
 -- | @mappend@ is unconditionally strict in the first argument.
 instance (Monoid a, b ~ (), c ~ ()) => Monoid (AsUnitLoop a b c) where
   mempty = UL mempty
-#if MIN_VERSION_base(4,11,0)
-  mappend = (<>)
-#else
-  mappend (UL x) uly = UL (mappend x (getUL uly))
-#endif
+-}
