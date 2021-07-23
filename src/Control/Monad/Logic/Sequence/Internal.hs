@@ -70,6 +70,13 @@ import qualified Data.Foldable as F
 
 data View m a = Empty | a :< SeqT m a
 
+instance Monad m => Functor (View m) where
+  fmap _ Empty = Empty
+  fmap f (a :< s) = f a :< fmap f s
+
+  _ <$ Empty = Empty
+  x <$ (_ :< s) = x :< (x <$ s)
+
 -- | An asymptotically efficient logic monad transformer. It is generally best to
 -- think of this as being defined
 --
@@ -154,32 +161,46 @@ single a = return (a :< mzero)
 
 instance Monad m => Functor (SeqT m) where
   {-# INLINEABLE fmap #-}
-  fmap f xs = xs >>= return . f
+  fmap f (SeqT q) = SeqT $ fmap (liftM (fmap f)) q
+  {-# INLINABLE (<$) #-}
+  x <$ SeqT q = SeqT $ fmap (liftM (x <$)) q
 
 instance Monad m => Applicative (SeqT m) where
   {-# INLINE pure #-}
-  {-# INLINE (<*>) #-}
+  {-# INLINABLE (<*>) #-}
   pure = fromView . single
-  (<*>) = liftM2 id
+  (<*>) = ap
+  (*>) = (>>)
+#if MIN_VERSION_base(4,10,0)
+  liftA2 = liftM2
+  {-# INLINABLE liftA2 #-}
+#endif
 
 instance Monad m => Alternative (SeqT m) where
   {-# INLINE empty #-}
   {-# INLINEABLE (<|>) #-}
   {-# SPECIALIZE INLINE (<|>) :: Seq a -> Seq a -> Seq a #-}
   empty = SeqT S.empty
-  (toView -> m) <|> n = fromView (m >>= \x -> case x of
-      Empty -> toView n
-      h :< t -> return (h :< cat t n))
+  m <|> n = fromView (altView m n)
+
+altView :: Monad m => SeqT m a -> SeqT m a -> m (View m a)
+altView (toView -> m) n = m >>= \x -> case x of
+  Empty -> toView n
+  h :< t -> return (h :< cat t n)
     where cat (SeqT l) (SeqT r) = SeqT (l S.>< r)
+{-# INLINE altView #-}
 
 instance Monad m => Monad (SeqT m) where
   {-# INLINE return #-}
   {-# INLINEABLE (>>=) #-}
   {-# SPECIALIZE INLINE (>>=) :: Seq a -> (a -> Seq b) -> Seq b #-}
   return = fromView . single
-  (toView -> m) >>= f = fromView (m >>= \x -> case x of
+  (toView -> m) >>= f = fromView $ m >>= \x -> case x of
     Empty -> return Empty
-    h :< t -> toView (f h `mplus` (t >>= f)))
+    h :< t -> f h `altView` (t >>= f)
+  (toView -> m) >> n = fromView $ m >>= \x -> case x of
+    Empty -> return Empty
+    _ :< t -> n `altView` (t >> n)
 #if !MIN_VERSION_base(4,13,0)
   {-# INLINEABLE fail #-}
   fail = Fail.fail

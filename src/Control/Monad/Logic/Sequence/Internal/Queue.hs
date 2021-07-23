@@ -84,10 +84,7 @@ instance TASequence s => Monoid (MSeq s a) where
 
 instance TASequence s => Functor (MSeq s) where
   {-# INLINEABLE fmap #-}
-  fmap f = go where
-    go q = case viewl q of
-      EmptyL -> S.empty
-      h S.:< t -> f h S.<| go t
+  fmap f (MSeq s) = MSeq (tmap (\(UL x) -> UL (f x)) s)
 
 instance TASequence s => F.Foldable (MSeq s) where
   {-# INLINEABLE foldMap #-}
