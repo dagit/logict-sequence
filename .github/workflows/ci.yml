@@ -8,18 +8,18 @@ on:
       - opened
       - synchronize
 jobs:
-  githubactions:
+  github-actions:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        cabal: ['latest']
-        ghc: ['latest']
+        cabal: ["3.4"]
+        ghc: ["9.0.1"]
         os: [ubuntu-latest, macOS-latest, windows-latest]
     env:
       CONFIG: "--enable-tests --enable-benchmarks"
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-haskell@v1.1.2
+      - uses: actions/setup-haskell@v1.1.4
         id: setup-haskell-cabal
         with:
           ghc-version: ${{ matrix.ghc }}
