@@ -161,8 +161,8 @@ jobs:
           $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
       - name: build
         run: |
-          ls -la
-          ls -la test
+          ls -la unpacked
+          ls -la unpacked/test
           $CABAL v2-build $ARG_COMPILER $ARG_TESTS $ARG_BENCH all
       - name: tests
         run: |
