@@ -35,7 +35,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
-      - run: cabal v2-build $CONFIG
+      - run: cabal v2-build $CONFIG all
       - run: cabal v2-test $CONFIG all
       - run: cabal v2-haddock $CONFIG
       - run: cabal v2-sdist
