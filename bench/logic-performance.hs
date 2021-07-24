@@ -157,7 +157,7 @@ main =
       bgroup "bfs" (forEachMonad heavy_bfs)
     ]
 
-forEachMonad :: (forall m. Int -> (MonadLogic m) => m ()) -> [Benchmark]
+forEachMonad :: (forall m. (MonadLogic m) => Int -> m ()) -> [Benchmark]
 forEachMonad targetLogic =
   [ bgroup "[]" (forEachSize $ nf (runList . targetLogic)),
     bgroup "Seq" (forEachSize $ nf (runContainersSeq . targetLogic)),
