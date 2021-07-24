@@ -25,6 +25,7 @@ jobs:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: ${{ matrix.cabal }}
       - run: cabal v2-update
+      - run: cabal v2-configure $CONFIG
       - run: cabal v2-freeze $CONFIG
       - uses: actions/cache@v2
         with:
