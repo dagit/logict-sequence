@@ -85,7 +85,7 @@ test-suite do-nothing
   build-depends:    base
 
 benchmark logic-performance
-  if impl(ghc < 8.0.2)
+  if impl(ghc < 8.0.2 || >= 9)
     buildable: False
   type:                exitcode-stdio-1.0
   hs-source-dirs:      bench
