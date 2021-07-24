@@ -14,7 +14,7 @@ jobs:
       matrix:
         cabal: ['latest']
         ghc: ['latest']
-        os: [ubuntu-lastest, macOS-latest, windows-latest]
+        os: [ubuntu-latest, macOS-latest, windows-latest]
     env:
       CONFIG: "--enable-tests --enable-benchmarks"
     steps:
