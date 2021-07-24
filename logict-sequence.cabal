@@ -82,9 +82,7 @@ test-suite logict-test
     default-language:      Haskell2010
   else
     type:                exitcode-stdio-1.0
-    -- reusing bench/do-nothing.hs might be
-    -- confusing...
-    hs-source-dirs:      bench
+    hs-source-dirs:      test
     main-is:             do-nothing.hs
     build-depends:       base
     default-language:    Haskell2010
