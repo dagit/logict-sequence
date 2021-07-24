@@ -15,8 +15,8 @@ jobs:
         cabal: ['latest']
         ghc: ['latest']
         os: [ubuntu-lastest, macOS-latest, windows-latest]
-      env:
-        CONFIG: "--enable-tests --enable-benchmarks"
+    env:
+      CONFIG: "--enable-tests --enable-benchmarks"
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-haskell@v1.1.2
