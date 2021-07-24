@@ -68,6 +68,7 @@ import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.State.Class (MonadState (..))
 import Control.Monad.Error.Class (MonadError (..))
 import Control.Monad.Morph (MFunctor (..))
+import Data.SequenceClass hiding ((:<), empty)
 import qualified Data.SequenceClass as S
 import Control.Monad.Logic.Sequence.Internal.Queue (Queue)
 import qualified Text.Read as TR
