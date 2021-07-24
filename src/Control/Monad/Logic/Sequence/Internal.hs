@@ -82,7 +82,6 @@ deriving instance (Show a, Show (SeqT m a)) => Show (View m a)
 deriving instance (Read a, Read (SeqT m a)) => Read (View m a)
 deriving instance (Eq a, Eq (SeqT m a)) => Eq (View m a)
 deriving instance (Ord a, Ord (SeqT m a)) => Ord (View m a)
-deriving instance Monad m => Functor (View m)
 
 instance Monad m => Functor (View m) where
   fmap _ Empty = Empty
