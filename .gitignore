@@ -1,0 +1,17 @@
+*.hi
+*.nix
+*.o
+*.p_hi
+*.prof
+*.swo
+*.tix
+.hpc/
+/dist/*
+/dist-newstyle/*
+/cabal.project.local
+dist-install
+ghc.mk
+.stack-work
+.cabal-sandbox/
+cabal.sandbox.config
+/TAGS
