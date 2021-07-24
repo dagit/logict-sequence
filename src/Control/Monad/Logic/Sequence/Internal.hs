@@ -198,9 +198,12 @@ instance Monad m => Monad (SeqT m) where
   (toView -> m) >>= f = fromView $ m >>= \x -> case x of
     Empty -> return Empty
     h :< t -> f h `altView` (t >>= f)
+
+  {-# INLINEABLE (>>) #-}
   (toView -> m) >> n = fromView $ m >>= \x -> case x of
     Empty -> return Empty
     _ :< t -> n `altView` (t >> n)
+
 #if !MIN_VERSION_base(4,13,0)
   {-# INLINEABLE fail #-}
   fail = Fail.fail
