@@ -65,7 +65,7 @@ library
     include-dirs: include
 
 test-suite logict-test
-  if impl(ghc >= 8)
+  if impl(ghc < 8)
     buildable: False
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
