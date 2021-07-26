@@ -51,11 +51,10 @@ module Control.Monad.Logic.Sequence.Internal
   , fromLogicT
   , chooseStreamM
   , chooseSeqT
-  , asumSeqT
 )
 where
 
-import Control.Applicative
+import Control.Applicative as A
 import Control.Monad
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Identity (Identity(..))
@@ -204,38 +203,7 @@ unstream (StreamM next s0) = fromView (unfold s0)
 
 {-# RULES
       "stream-unstream" [2] forall s. stream (unstream s) = s;
-      "toView-fromView" [1] forall s. fromView (toView s) = s;
   #-}
-
-newtype Fix1 f a = In1 { out1 :: f (Fix1 f a) a }
-
-chooseStreamM :: (Foldable f, Monad m) => f a -> StreamM m a
-chooseStreamM = StreamM (return . out1) . foldr (\a b -> In1 (Yield a b)) (In1 Done)
-{-# INLINE[1] chooseStreamM #-}
-
-chooseSeqT :: (Foldable f, Monad m) => f a -> SeqT m a
-chooseSeqT = unstream . chooseStreamM
-{-# INLINE[3] chooseSeqT #-}
-
-{-
-chooseSeqT :: (Foldable t, Monad m) => t a -> SeqT m a
-chooseSeqT xs = unstream (foldr (alt_s . stream . pure) done xs)
-{-# INLINEABLE [3] chooseSeqT #-}
-
-chooseSeqTList :: Monad m => [a] -> SeqT m a
-chooseSeqTList xs = unstream (StreamM next xs)
-  where
-  next [] = return Done
-  next (y:ys) = return (Yield y ys)
-{-# INLINEABLE [3] chooseSeqTList #-}
-
-{-# RULES
-    "chooseSeqT list" [4] chooseSeqT = chooseSeqTList;
-  #-}
--}
-asumSeqT :: (Monad m, Foldable t) => t (SeqT m a) -> SeqT m a
-asumSeqT = unstream . foldr (alt_s . stream) done
-{-# INLINE [3] asumSeqT #-}
 
 {-
 Theorem: toView . fromView = id
@@ -260,6 +228,16 @@ m >>= \x -> case x of
   hi :< SeqT ti -> return (hi :< SeqT ti)
 = m
 -}
+
+newtype Fix1 f a = In1 { out1 :: f (Fix1 f a) a }
+
+chooseStreamM :: (Foldable f, Monad m) => f a -> StreamM m a
+chooseStreamM = StreamM (return . out1) . foldr (\a b -> In1 (Yield a b)) (In1 Done)
+{-# INLINE[1] chooseStreamM #-}
+
+chooseSeqT :: (Foldable f, Monad m) => f a -> SeqT m a
+chooseSeqT = unstream . chooseStreamM
+{-# INLINE[3] chooseSeqT #-}
 
 instance (Show (m (View m a)), Monad m) => Show (SeqT m a) where
   showsPrec d s = showParen (d > app_prec) $
@@ -352,14 +330,14 @@ instance Monad m => Monad (SeqT m) where
   {-# INLINEABLE (>>=) #-}
   return = fromView . single
   (>>=) = bind
+#if !MIN_VERSION_base(4,13,0)
+  {-# INLINEABLE fail #-}
+  fail = Fail.fail
+#endif
 
 bind :: Monad m => SeqT m a -> (a -> SeqT m b) -> SeqT m b
 bind m f = unstream (bind_s (stream m) (stream . f))
 {-# INLINE[3] bind #-}
-
-done :: Monad m => StreamM m a
-done = StreamM (const (return Done)) Empty
-{-# INLINE CONLIKE [0] done #-}
 
 data BindSState a b m
   = Boundary a
@@ -382,30 +360,6 @@ bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
       Skip bs -> Skip (InProgress s_a next_fa bs)
       Done -> Skip (Boundary s_a)
 {-# INLINE[1] bind_s #-}
-{-
-bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
-bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
-  {-# INLINE next #-}
-  next (Boundary s_a) = do
-    x <- next_a s_a
-    case x of
-      Yield a as -> case f a of
-        StreamM next_fa fa0 -> next (InProgress as next_fa fa0)
-      Skip as -> next (InSkip as)
-      Done -> return Done
-  next (InProgress s_a next_b s_b) = do
-    x <- next_b s_b
-    case x of
-      Yield b bs -> return (Yield b (InProgress s_a next_b bs))
-      Skip bs -> return (Skip (InProgress s_a next_b bs))
-      Done -> next (Boundary s_a)
-  next (InSkip s_b) = return (Skip (InSkip s_b))
--}
-
-#if !MIN_VERSION_base(4,13,0)
-  {-# INLINEABLE fail #-}
-  fail = Fail.fail
-#endif
 
 instance Monad m => Fail.MonadFail (SeqT m) where
   {-# INLINEABLE fail #-}
@@ -414,7 +368,7 @@ instance Monad m => Fail.MonadFail (SeqT m) where
 instance Monad m => MonadPlus (SeqT m) where
   {-# INLINE mzero #-}
   {-# INLINE mplus #-}
-  mzero = Control.Applicative.empty
+  mzero = A.empty
   mplus = (<|>)
 
 #if MIN_VERSION_base(4,9,0)

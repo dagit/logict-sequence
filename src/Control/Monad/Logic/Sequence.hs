@@ -30,6 +30,7 @@ module Control.Monad.Logic.Sequence
   , observeMany
   , observeT
   , observe
+  , chooseSeqT
   , module Control.Monad
   , module Control.Monad.Trans
 )
