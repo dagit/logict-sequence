@@ -40,7 +40,7 @@ module Control.Monad.Logic.Sequence.Internal
   , observeAll
   , observeT
   , observe
-  , observeMaybeT
+  , observeTMaybe
   , observeMaybe
   , fromSeqT
   , hoistPre
@@ -342,21 +342,21 @@ observeT (toView -> m) = m >>= go where
   go Empty = fail "No results."
 {-# INLINE observeT #-}
 
-observe :: Seq a -> a
+observe :: Seq a -> Maybe a
 observe (toView -> m) = case runIdentity m of
-  a :< _ -> a
-  Empty -> error "No results."
+  a :< _ -> Just a
+  Empty -> Nothing
 {-# INLINE observe #-}
 
-observeMaybeT :: Monad m => SeqT m (Maybe a) -> m (Maybe a)
-observeMaybeT (toView -> m) = m >>= go where
+observeTMaybe :: Monad m => SeqT m (Maybe a) -> m (Maybe a)
+observeTMaybe (toView -> m) = m >>= go where
   go (Just a :< _) = return (Just a)
   go (Nothing :< rest) = toView rest >>= go
   go Empty = return Nothing
-{-# INLINEABLE observeMaybeT #-}
+{-# INLINEABLE observeTMaybe #-}
 
 observeMaybe :: Seq (Maybe a) -> Maybe a
-observeMaybe = runIdentity . observeMaybeT
+observeMaybe = runIdentity . observeTMaybe
 {-# INLINE observeMaybe #-}
 
 observeAll :: Seq a -> [a]

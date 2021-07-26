@@ -28,7 +28,7 @@ module Control.Monad.Logic.Sequence
   , observeAll
   , observeT
   , observe
-  , observeMaybeT
+  , observeTMaybe
   , observeMaybe
   , module Control.Monad
   , module Control.Monad.Trans
