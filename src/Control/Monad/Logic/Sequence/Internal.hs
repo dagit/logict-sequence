@@ -364,45 +364,23 @@ done = StreamM (const (return Done)) Empty
 data BindSState a b m
   = Boundary a
   | forall s. InProgress a (s -> m (Step s b)) s
-  | forall s. InSkip s
 
--- I wanted to see how well `bind_s` fuses if `next` is not recursive.
--- That took a bit of rewriting and the result is quite ugly. It is
--- slightly faster, so I think that means it does fuse better, but
--- frankly, it's an awful mess.
 bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
 bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
   {-# INLINE next #-}
   next (Boundary s_a) = do
     x <- next_a s_a
-    case x of
-      Yield a as -> case f a of
-        StreamM next_fa fa0 -> do
-          y <- next_fa fa0
-          case y of
-            Yield b bs -> return (Yield b (InProgress as next_fa bs))
-            Skip bs -> return (Skip (InProgress as next_fa bs))
-            Done -> return (Skip (InProgress as next_fa fa0))
-      Skip as -> return (Skip (InSkip as))
-      Done -> return Done
-  next (InProgress s_a next_b s_b) = do
-    x <- next_b s_b
-    case x of
-      Yield b bs -> return (Yield b (InProgress s_a next_b bs))
-      Skip bs -> return (Skip (InProgress s_a next_b bs))
-      Done -> do
-        z <- next_a s_a
-        case z of
-          Yield a as -> case f a of
-            StreamM next_fa fa0 -> do
-              y <- next_fa fa0
-              case y of
-                Yield b bs -> return (Yield b (InProgress as next_fa bs))
-                Skip bs -> return (Skip (InProgress as next_fa bs))
-                Done -> return (Skip (InProgress as next_fa fa0))
-          Skip as -> return (Skip (InSkip as))
-          Done -> return Done
-  next (InSkip s_b) = return (Skip (InSkip s_b))
+    return $ case x of
+      Yield a _ -> case f a of
+        StreamM next_fa fa0 -> Skip (InProgress s_a next_fa fa0)
+      Skip as -> Skip (Boundary as)
+      Done -> Done
+  next (InProgress s_a next_fa s_fa) = do
+    x <- next_fa s_fa
+    return $ case x of
+      Yield b bs -> Yield b (InProgress s_a next_fa bs)
+      Skip bs -> Skip (InProgress s_a next_fa bs)
+      Done -> Skip (Boundary s_a)
 {-# INLINE[1] bind_s #-}
 {-
 bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
