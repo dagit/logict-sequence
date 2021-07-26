@@ -277,9 +277,23 @@ single a = return (a :< mzero)
 
 instance Monad m => Functor (SeqT m) where
   {-# INLINEABLE fmap #-}
-  fmap f (SeqT q) = SeqT $ fmap (liftM (fmap f)) q
-  {-# INLINABLE (<$) #-}
-  x <$ SeqT q = SeqT $ fmap (liftM (x <$)) q
+  fmap = fmapSeqT
+
+fmapSeqT :: Monad m => (a -> b) -> SeqT m a -> SeqT m b
+fmapSeqT f s = unstream (fmap_s f (stream s))
+{-# INLINEABLE [3] fmapSeqT #-}
+
+fmap_s :: Monad m => (a -> b) -> StreamM m a -> StreamM m b
+fmap_s f (StreamM next_a a0) = StreamM next a0
+  where
+  {-# INLINE next #-}
+  next a = do
+    x <- next_a a
+    case x of
+      Done -> return Done
+      Skip s -> return (Skip s)
+      Yield y ys -> return (Yield (f y) ys)
+{-# INLINEABLE [1] fmap_s #-}
 
 instance Monad m => Applicative (SeqT m) where
   {-# INLINE pure #-}
