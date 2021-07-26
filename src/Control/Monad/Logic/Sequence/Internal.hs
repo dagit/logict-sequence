@@ -224,14 +224,14 @@ instance Monad m => Monad (SeqT m) where
 #endif
 
 bind :: Monad m => SeqT m a -> (a -> SeqT m b) -> SeqT m b
-bind = go where
+bind m0 f0 = go m0 f0 where
   go m f = fromView $ toView m >>= \x -> case x of
     Empty -> return Empty
     h :< t -> f h `altView` (t `go` f)
 {-# INLINEABLE bind #-}
 
 then_ :: Monad m => SeqT m a -> SeqT m b -> SeqT m b
-then_ = go where
+then_ m0 n0 = go m0 n0 where
   go m n = fromView $ toView m >>= \x -> case x of
     Empty -> return Empty
     _ :< t -> n `altView` (t `go` n)
