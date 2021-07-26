@@ -231,11 +231,11 @@ m >>= \x -> case x of
 
 newtype Fix1 f a = In1 { out1 :: f (Fix1 f a) a }
 
-chooseStreamM :: (Foldable f, Monad m) => f a -> StreamM m a
+chooseStreamM :: (F.Foldable f, Monad m) => f a -> StreamM m a
 chooseStreamM = StreamM (return . out1) . foldr (\a b -> In1 (Yield a b)) (In1 Done)
 {-# INLINE[1] chooseStreamM #-}
 
-chooseSeqT :: (Foldable f, Monad m) => f a -> SeqT m a
+chooseSeqT :: (F.Foldable f, Monad m) => f a -> SeqT m a
 chooseSeqT = unstream . chooseStreamM
 {-# INLINE[3] chooseSeqT #-}
 
