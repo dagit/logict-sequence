@@ -49,6 +49,9 @@ module Control.Monad.Logic.Sequence.Internal
   , hoistPostUnexposed
   , toLogicT
   , fromLogicT
+  , chooseStreamM
+  , chooseSeqT
+  , asumSeqT
 )
 where
 
@@ -167,34 +170,36 @@ fromView = SeqT . S.singleton
 {-# INLINE[0] fromView #-}
 
 toView :: Monad m => SeqT m a -> m (View m a)
-toView (SeqT s) = case S.viewl s of
-  S.EmptyL -> return Empty
-  h S.:< t -> h >>= \x -> case x of
-    Empty -> toView (SeqT t)
-    hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
-{-# INLINEABLE[0] toView #-}
+toView (SeqT s0) = go s0 where
+  go s = case S.viewl s of
+    S.EmptyL -> return Empty
+    h S.:< t -> h >>= \x -> case x of
+      Empty -> go t
+      hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
+{-# INLINE[0] toView #-}
 
-data Step s a = Done | Yield a s
--- data Stream a = forall s. Stream (s -> Step s a) s
+data Step s a = Done | Yield a s | Skip s
 data StreamM m a = forall s. StreamM (s -> m (Step s a)) s
-
--- type ViewS m a = Stream (m (View m a))
 
 stream :: Monad m => SeqT m a -> StreamM m a
 stream m = StreamM next m where
   {-# INLINE next #-}
-  next s = step <$> toView s
-  step Empty = Done
-  step (h :< t) = Yield h t
+  next s = do
+    x <- toView s
+    case x of
+      Empty -> return Done
+      h :< t -> return (Yield h t)
 {-# INLINE[1] stream #-}
 
-unstream :: forall m a. Monad m => StreamM m a -> SeqT m a
-unstream (StreamM next (s0::s)) = SeqT (unfold s0)
+unstream :: Monad m => StreamM m a -> SeqT m a
+unstream (StreamM next s0) = fromView (unfold s0)
   where
-  unfold :: s -> Queue (m (View m a))
-  unfold s = S.singleton (step <$> next s)
-  step Done = Empty
-  step (Yield x xs) = x :< SeqT (unfold xs)
+  unfold s = do
+    v <- next s
+    case v of
+      Done -> return Empty
+      Skip xs -> unfold xs
+      Yield x xs -> return (x :< fromView (unfold xs))
 {-# INLINE[1] unstream #-}
 
 {-# RULES
@@ -206,11 +211,11 @@ newtype Fix1 f a = In1 { out1 :: f (Fix1 f a) a }
 
 chooseStreamM :: (Foldable f, Monad m) => f a -> StreamM m a
 chooseStreamM = StreamM (return . out1) . foldr (\a b -> In1 (Yield a b)) (In1 Done)
-{-# INLINEABLE[1] chooseStreamM #-}
+{-# INLINE[1] chooseStreamM #-}
 
 chooseSeqT :: (Foldable f, Monad m) => f a -> SeqT m a
 chooseSeqT = unstream . chooseStreamM
-{-# INLINEABLE[3] chooseSeqT #-}
+{-# INLINE[3] chooseSeqT #-}
 
 {-
 chooseSeqT :: (Foldable t, Monad m) => t a -> SeqT m a
@@ -327,6 +332,7 @@ alt_s (StreamM next_a a) (StreamM next_b b) = StreamM next (Just a, b)
     x <- next_b s_b
     return $ case x of
       Done -> Done
+      Skip vs -> Skip (Nothing, vs)
       Yield v vs -> Yield v (Nothing, vs)
   next (Just s_a, s_b) = do
     y <- next_a s_a
@@ -335,7 +341,9 @@ alt_s (StreamM next_a a) (StreamM next_b b) = StreamM next (Just a, b)
         x <- next_b s_b
         return $ case x of
           Done -> Done
+          Skip vs -> Skip (Nothing, vs)
           Yield v vs -> Yield v (Nothing, vs)
+      Skip vs -> return (Skip (Just vs, s_b))
       Yield x xs -> return (Yield x (Just xs, s_b))
 {-# INLINE[1] alt_s #-}
 
@@ -353,8 +361,50 @@ done :: Monad m => StreamM m a
 done = StreamM (const (return Done)) Empty
 {-# INLINE CONLIKE [0] done #-}
 
-data BindSState a b m = Boundary a | forall s. InProgress a (s -> m (Step s b)) s
+data BindSState a b m
+  = Boundary a
+  | forall s. InProgress a (s -> m (Step s b)) s
+  | forall s. InSkip s
 
+-- I wanted to see how well `bind_s` fuses if `next` is not recursive.
+-- That took a bit of rewriting and the result is quite ugly. It is
+-- slightly faster, so I think that means it does fuse better, but
+-- frankly, it's an awful mess.
+bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
+bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
+  {-# INLINE next #-}
+  next (Boundary s_a) = do
+    x <- next_a s_a
+    case x of
+      Yield a as -> case f a of
+        StreamM next_fa fa0 -> do
+          y <- next_fa fa0
+          case y of
+            Yield b bs -> return (Yield b (InProgress as next_fa bs))
+            Skip bs -> return (Skip (InProgress as next_fa bs))
+            Done -> return (Skip (InProgress as next_fa fa0))
+      Skip as -> return (Skip (InSkip as))
+      Done -> return Done
+  next (InProgress s_a next_b s_b) = do
+    x <- next_b s_b
+    case x of
+      Yield b bs -> return (Yield b (InProgress s_a next_b bs))
+      Skip bs -> return (Skip (InProgress s_a next_b bs))
+      Done -> do
+        z <- next_a s_a
+        case z of
+          Yield a as -> case f a of
+            StreamM next_fa fa0 -> do
+              y <- next_fa fa0
+              case y of
+                Yield b bs -> return (Yield b (InProgress as next_fa bs))
+                Skip bs -> return (Skip (InProgress as next_fa bs))
+                Done -> return (Skip (InProgress as next_fa fa0))
+          Skip as -> return (Skip (InSkip as))
+          Done -> return Done
+  next (InSkip s_b) = return (Skip (InSkip s_b))
+{-# INLINE[1] bind_s #-}
+{-
 bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
 bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
   {-# INLINE next #-}
@@ -363,13 +413,16 @@ bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
     case x of
       Yield a as -> case f a of
         StreamM next_fa fa0 -> next (InProgress as next_fa fa0)
+      Skip as -> next (InSkip as)
       Done -> return Done
   next (InProgress s_a next_b s_b) = do
     x <- next_b s_b
     case x of
       Yield b bs -> return (Yield b (InProgress s_a next_b bs))
+      Skip bs -> return (Skip (InProgress s_a next_b bs))
       Done -> next (Boundary s_a)
-{-# INLINE[1] bind_s #-}
+  next (InSkip s_b) = return (Skip (InSkip s_b))
+-}
 
 #if !MIN_VERSION_base(4,13,0)
   {-# INLINEABLE fail #-}
