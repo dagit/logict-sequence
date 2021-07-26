@@ -189,7 +189,7 @@ instance Monad m => Functor (SeqT m) where
 
 instance Monad m => Applicative (SeqT m) where
   {-# INLINEABLE pure #-}
-  {-# INLINABLE (<*>) #-}
+  {-# INLINEABLE (<*>) #-}
   pure = fromView . single
   (<*>) = ap
   (*>) = (>>)
