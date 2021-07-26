@@ -15,7 +15,11 @@ jobs:
       matrix:
         cabal: ["latest"]
         ghc: ["latest"]
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          - windows-latest:
+            allow-failure: true
     env:
       CONFIG: "--enable-tests --enable-benchmarks"
     steps:
