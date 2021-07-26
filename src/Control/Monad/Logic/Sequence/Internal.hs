@@ -36,7 +36,7 @@ module Control.Monad.Logic.Sequence.Internal
   , View(..)
   , toView
   , fromView
-  , observeAllT
+  , observeTAll
   , observeAll
   , observeT
   , observe
@@ -325,12 +325,12 @@ instance Monad m => MonadLogic (SeqT m) where
       Empty -> single Nothing
       a :< t -> single (Just (a, t))
 
-observeAllT :: Monad m => SeqT m a -> m [a]
-observeAllT (toView -> m) = m >>= go where
+observeTAll :: Monad m => SeqT m a -> m [a]
+observeTAll (toView -> m) = m >>= go where
   go (a :< t) = liftM (a:) (toView t >>= go)
   go _ = return []
-{-# INLINEABLE observeAllT #-}
-{-# SPECIALIZE INLINE observeAllT :: Seq a -> Identity [a] #-}
+{-# INLINEABLE observeTAll #-}
+{-# SPECIALIZE INLINE observeTAll :: Seq a -> Identity [a] #-}
 
 #if !MIN_VERSION_base(4,13,0)
 observeT :: Monad m => SeqT m a -> m a
@@ -360,7 +360,7 @@ observeMaybe = runIdentity . observeTMaybe
 {-# INLINE observeMaybe #-}
 
 observeAll :: Seq a -> [a]
-observeAll = runIdentity . observeAllT
+observeAll = runIdentity . observeTAll
 {-# INLINE observeAll #-}
 
 -- | Convert @'SeqT' m a@ to @t m a@ when @t@ is some other logic monad

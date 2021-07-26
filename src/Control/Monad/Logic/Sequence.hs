@@ -24,7 +24,7 @@ module Control.Monad.Logic.Sequence
   , View(..)
   , toView
   , fromView
-  , observeAllT
+  , observeTAll
   , observeAll
   , observeT
   , observe

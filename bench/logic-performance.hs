@@ -82,7 +82,7 @@ runLSeqT_I :: L.Seq a -> [a]
 runLSeqT_I = L.observeAll
 
 runLSeqT_S :: (forall s. L.SeqT (ST s) a) -> [a]
-runLSeqT_S ma = runST (L.observeAllT ma)
+runLSeqT_S ma = runST (L.observeTAll ma)
 
 ------------------------------------------------------------------------
 -- Measured codes
