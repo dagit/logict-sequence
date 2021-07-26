@@ -76,6 +76,11 @@ test-suite logict-test
                   , hedgehog
                   , hspec
                   , hspec-hedgehog
+  -- Try to work around weird CI failure
+  if impl(ghc == 8.4.4)
+    build-depends:  vector-builder == 0.3.7.2
+  if impl(ghc == 8.2.2)
+    build-depends:  vector-builder == 0.3.7.2
 
 test-suite do-nothing
   type: exitcode-stdio-1.0
