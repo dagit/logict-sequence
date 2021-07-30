@@ -23,7 +23,7 @@ import qualified Data.SequenceClass as S
 import Control.Monad.Logic.Sequence.Internal.Queue
 import Data.Functor.Identity
 import Control.Applicative
-import Data.Function (fix)
+import Data.Function (fix, on)
 import GHC.Generics (Generic)
 import qualified Hedgehog.Function as Fun
 import Data.Foldable (foldl', for_)
@@ -35,6 +35,7 @@ import Control.Monad.Except
 import Control.Monad.Morph (hoist)
 import Control.Monad.ST
 import Text.Read (readMaybe)
+import Data.List (cycle)
 
 -- | A generic "container" functor. We can use this with `Free` to get
 -- an inspectable `Monad` that's unlikely to hide any mistakes we make.
@@ -232,7 +233,31 @@ main = hspec $ do
     it "obeys the hoist identity law" $ hedgehog $ do
       s <- forAll simpleSeqT
       hoist (\x -> x) s === s
-
+  describe "cons" $ do
+    it "works as documented" $ hedgehog $ do
+      a <- forAll (Gen.integral (Range.constant 0 10000))
+      s <- forAll simpleSeqT
+      cons a s === (pure a <|> s)
+  describe "consM" $ do
+    it "works as documented" $ hedgehog $ do
+      ma <- forAll simpleTestM
+      s <- forAll simpleSeqT
+      consM ma s === (lift ma <|> s)
+  describe "choose" $ do
+    it "works as documented" $ hedgehog $ do
+      lst <- forAll $ Gen.list (Range.linear 0 10) (Gen.int (Range.constant 0 10000))
+      choose lst === foldr (\a s -> pure a <|> s) (empty :: SeqT TestM Int) lst
+    it "works on infinite lists" $
+      observeManyT 4 (choose [1 ..] :: SeqT TestM Integer) `shouldBe` pure [1,2,3,4]
+  describe "chooseM" $ do
+    it "works as documented" $ hedgehog $ do
+      lst <- forAll $ Gen.list (Range.linear 0 5) (Gen.small simpleTestM)
+      chooseM lst === foldr (\ma s -> lift ma <|> s) (empty :: SeqT TestM Int) lst
+    it "works on infinite lists" $ do
+      let lst = cycle [[3,4],[5],[6,7]] :: [[Int]]
+      (shouldBe `on` observeManyT 4)
+          (chooseM lst)
+          (foldr (\ma s -> lift ma <|> s) empty lst)
 
 
 -- -------
