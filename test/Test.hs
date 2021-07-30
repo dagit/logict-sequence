@@ -121,7 +121,7 @@ main = hspec $ do
   describe "observeT" $ do
     it "undoes lift" $ hedgehog $ do
       ex <- forAll simpleTestM
-      runMaybeT (Compat.observeT (lift (lift ex))) === runMaybeT (lift ex)
+      observeT (lift ex) === (Just <$> ex)
   describe "observeAllT" $ do
     it "undoes lift" $ hedgehog $ do
       ex <- forAll simpleTestM
@@ -227,7 +227,7 @@ main = hspec $ do
           x <- local (5+) ask
           y <- ask
           return (x, y)
-      runReader (runMaybeT (Compat.observeT foo)) 0 `shouldBe` Just (5, 0)
+      runReader (observeT foo) 0 `shouldBe` Just (5, 0)
   describe "MFunctor instance" $ do
     it "obeys the hoist identity law" $ hedgehog $ do
       s <- forAll simpleSeqT
