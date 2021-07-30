@@ -24,12 +24,10 @@ module Control.Monad.Logic.Sequence
   , View(..)
   , toView
   , fromView
-  , observeTAll
+  , observeAllT
   , observeAll
   , observeT
   , observe
-  , observeTMaybe
-  , observeMaybe
   , module Control.Monad
   , module Control.Monad.Trans
 )
