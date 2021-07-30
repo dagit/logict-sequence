@@ -34,9 +34,6 @@ module Control.Monad.Logic.Sequence.Internal
   , getSeq
 #endif
   , View(..)
-  , Queue
-  , MSeq(..)
-  , AsUnitLoop(..)
   , toView
   , fromView
   , observeAllT
@@ -67,9 +64,8 @@ import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.State.Class (MonadState (..))
 import Control.Monad.Error.Class (MonadError (..))
 import Control.Monad.Morph (MFunctor (..))
-import Data.SequenceClass hiding ((:<), empty)
 import qualified Data.SequenceClass as S
-import Control.Monad.Logic.Sequence.Internal.Queue
+import Control.Monad.Logic.Sequence.Internal.Queue (Queue)
 import qualified Text.Read as TR
 import Data.Function (on)
 #if MIN_VERSION_base(4,9,0)
@@ -167,12 +163,12 @@ pattern MkSeq{getSeq} <- (runIdentity . toView -> getSeq)
 type Seq = SeqT Identity
 
 fromView :: m (View m a) -> SeqT m a
-fromView = SeqT . singleton
+fromView = SeqT . S.singleton
 {-# INLINE fromView #-}
 
 toView :: Monad m => SeqT m a -> m (View m a)
-toView (SeqT s) = case viewl s of
-  EmptyL -> return Empty
+toView (SeqT s) = case S.viewl s of
+  S.EmptyL -> return Empty
   h S.:< t -> h >>= \x -> case x of
     Empty -> toView (SeqT t)
     hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
