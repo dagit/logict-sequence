@@ -5,6 +5,7 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language DeriveFunctor #-}
 {-# language StandaloneDeriving #-}
+{-# language ViewPatterns #-}
 module Main(main) where
 
 import Control.Monad.IO.Class (liftIO)
@@ -15,6 +16,7 @@ import Hedgehog.Range (Size)
 import qualified Hedgehog.Range as Range
 import Test.Hspec (before, describe, hspec, it, shouldBe)
 import Test.Hspec.Hedgehog (PropertyT, diff, forAll, hedgehog, (/==), (===))
+import Control.Monad.Logic.Class (MonadLogic (..))
 import Control.Monad.Logic.Sequence
 import qualified Control.Monad.Logic.Sequence.Compat as Compat
 import Control.Monad.Logic.Sequence.Internal (SeqT (..))
@@ -211,14 +213,17 @@ main = hspec $ do
       s <- forAll simpleSeqT
       t <- forAll simpleSeqT
       (s <|> t) === Compat.fromLogicT (Compat.fromSeqT s <|> Compat.fromSeqT t)
+
   describe "fromLogicT" $ do
     it "reverses fromSeqT" $ hedgehog $ do
       s <- forAll simpleSeqT
       Compat.fromLogicT (Compat.fromSeqT s) === s
+
   describe "fromView" $ do
     it "reverses toView" $ hedgehog $ do
       s <- forAll simpleSeqT
       fromView (toView s) === s
+
   describe "MonadReader instance" $ do
     it "passes the tests in https://github.com/Bodigrim/logict/issues/1" $ do
       runReader (runMaybeT (observeAllT (local (5+) ask))) 0 `shouldBe` Just [5]
@@ -229,10 +234,122 @@ main = hspec $ do
           y <- ask
           return (x, y)
       runReader (observeT foo) 0 `shouldBe` Just (5, 0)
+
   describe "MFunctor instance" $ do
     it "obeys the hoist identity law" $ hedgehog $ do
       s <- forAll simpleSeqT
       hoist (\x -> x) s === s
+
+  describe "MonadTrans instance" $ do
+    it "obeys the pure/lift law" $ hedgehog $ do
+      a <- forAll (Gen.integral (Range.constant 0 10000))
+      (lift (pure a) :: SeqT TestM Int) === pure a
+    it "obeys the >>=/lift law" $ hedgehog $ do
+      m <- forAll simpleTestM
+      f :: Int -> TestM Int <- Fun.forAllFn (Fun.fn simpleTestM)
+      (lift m >>= lift . f :: SeqT TestM Int) === lift (m >>= f)
+
+  describe "msplit" $ do
+    it "obeys msplit empty law" $
+      L.msplit (empty :: SeqT TestM Int) `shouldBe` pure Nothing
+    it "obeys msplit of cons law" $
+      hedgehog $ do
+        a <- forAll (Gen.integral (Range.constant 0 10000))
+        m <- forAll simpleSeqT
+        L.msplit (pure a <|> m) === pure (Just (a, m))
+
+  describe "interleave" $ do
+    it "behaves as documented on examples" $ do
+      let x = choose [1,2,3]
+          y = choose [4,5,6]
+          z = choose [7,8,9] :: Seq Int
+      observeAll (x `L.interleave` y) `shouldBe` [1,4,2,5,3,6]
+      observeAll ((x `L.interleave` y) `L.interleave` z) `shouldBe` [1,7,4,8,2,9,5,3,6]
+      observeAll (y `L.interleave` z) `shouldBe` [4,7,5,8,6,9]
+      observeAll (x `L.interleave` (y `L.interleave` z)) `shouldBe` [1,4,2,7,3,5,8,6,9]
+
+  describe ">>-" $ do
+    it "behaves as documented in class documentation examples" $ do
+      let
+        odds :: Seq Int
+        odds = pure 1 <|> fmap (2 +) odds
+        oddsPlus n = odds >>= \a -> pure (a + n)
+        q = do
+              x <- (pure 0 <|> pure 1) L.>>- oddsPlus
+              if even x then pure x else empty
+      observeMany 3 q `shouldBe` [2,4,6]
+      let
+        m = choose [2,7 :: Int]
+        k x = choose [x, x + 1]
+        h x = choose [x, x * 2]
+      observeAll (m >>= (\x -> k x >>= h))
+        `shouldBe` [2,4,3,6,7,14,8,16]
+      observeAll ((m >>= k) >>= h)
+        `shouldBe` [2,4,3,6,7,14,8,16]
+      observeAll (m >>- (\x -> k x >>- h))
+        `shouldBe` [2,7,3,8,4,14,6,16]
+      observeAll ((m >>- k) >>- h)
+        `shouldBe` [2,7,4,3,14,8,6,16]
+      let booyakasha = (pure (0 :: Int) <|> pure 1) >>-
+            oddsPlus >>-
+              \x -> if even x then pure x else empty
+      observeMany 10 booyakasha `shouldBe` [2,4,6,8,10,12,14,16,18,20]
+
+  describe "once" $ do
+    it "behaves as documented in class documentation example" $ do
+      let
+        divisors n = do a <- choose [2..n-1]
+                        b <- choose [2..n-1]
+                        guard (a * b == n)
+                        pure (a, b)
+        composite v = "Composite" <$ once (divisors v)
+      observeAll (composite 20) `shouldBe` ["Composite"]
+
+  describe "lnot" $ do
+    it "behaves as documented in class documentation example" $ do
+      let
+         divisors n = do d <- choose [2..n-1]
+                         guard (n `rem` d == 0)
+                         pure d
+
+         prime v = do _ <- lnot (divisors v)
+                      pure True
+      observeAll (prime 20) `shouldBe` []
+      observeAll (prime 19) `shouldBe` [True]
+
+  describe "ifte" $ do
+    it "obeys the law ifte (pure a) th el == th a" $ hedgehog $ do
+      a <- forAll (Gen.integral (Range.constant 0 10000))
+      th :: Int -> SeqT TestM Int <- Fun.forAllFn (Fun.fn simpleSeqT)
+      let el = error "Should not reach el"
+      ifte (pure a) th el === th a
+
+    it "obeys the law ifte empty th el == el" $ hedgehog $ do
+      let th = error "Should not reach th"
+      el <- forAll simpleSeqT
+      ifte empty th el === el
+
+    it "obeys the law ifte (pure a <|> m) th el == th a <|> (m >>= th)" $ hedgehog $ do
+      a <- forAll (Gen.integral (Range.constant 0 10000))
+      m <- forAll (Gen.small simpleSeqT)
+      th :: Int -> SeqT TestM Int <- Fun.forAllFn (Fun.fn simpleSeqT)
+      let el = error "Should not reach el"
+      (ifte (pure a <|> m) th el) === (th a <|> (m >>= th))
+
+    it "behaves as documented in class documentation example" $ do
+    -- Note: at the moment (logict-0.7.1.0) this example is actually
+    -- written wrong. It's corrected below, and will be fixed upstream
+    -- in the next version.
+      let
+        divisors n = do d <- choose [2..n-1]
+                        guard (n `rem` d == 0)
+                        pure d
+        prime v = once (ifte (divisors v)
+                         (const (pure False))
+                         (pure True))
+      observeAll (prime 20) `shouldBe` [False]
+      observeAll (prime 19) `shouldBe` [True]
+
   describe "cons" $ do
     it "works as documented" $ hedgehog $ do
       a <- forAll (Gen.integral (Range.constant 0 10000))
