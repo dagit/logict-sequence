@@ -38,6 +38,8 @@ source-repository head
 
 library
     exposed-modules:  Control.Monad.Logic.Sequence
+                    , Control.Monad.Logic.Sequence.Compat
+                    , Control.Monad.Logic.Sequence.Morph
                     , Control.Monad.Logic.Sequence.Internal
                     , Control.Monad.Logic.Sequence.Internal.Queue
                     , Control.Monad.Logic.Sequence.Internal.AsUnitLoop
@@ -51,7 +53,8 @@ library
     build-depends: mtl >=2.0 && <2.3
     build-depends: type-aligned >= 0.9.6 && < 0.10
     build-depends: sequence >= 0.9.8 && < 0.10
-    build-depends: logict
+    build-depends: logict >= 0.7.1.0 && < 0.8
+    build-depends: mmorph
 
     if impl(ghc < 8.0)
        build-depends: fail, transformers
@@ -76,6 +79,13 @@ test-suite logict-test
                   , hedgehog
                   , hspec
                   , hspec-hedgehog
+                  , hedgehog-fn
+                  , sequence
+                  , logict
+                  , transformers
+                  , mtl
+                  , mmorph
+
   -- Try to work around weird CI failure
   if impl(ghc == 8.4.4)
     build-depends:  vector-builder == 0.3.7.2
