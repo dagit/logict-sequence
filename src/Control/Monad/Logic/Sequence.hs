@@ -22,6 +22,7 @@ module Control.Monad.Logic.Sequence
   , getSeq
 #endif
   , View(..)
+  , view
   , toView
   , fromView
   , cons

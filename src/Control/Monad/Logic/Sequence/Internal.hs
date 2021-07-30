@@ -21,6 +21,12 @@
 #endif
 {-# OPTIONS_HADDOCK not-home #-}
 
+-- | Based on the LogicT improvements in the paper, Reflection without
+-- Remorse. Code is based on the code provided in:
+-- https://github.com/atzeus/reflectionwithoutremorse
+--
+-- Note: that code is provided under an MIT license, so we use that as
+-- well.
 module Control.Monad.Logic.Sequence.Internal
 (
 #ifdef USE_PATTERN_SYNONYMS
@@ -34,6 +40,7 @@ module Control.Monad.Logic.Sequence.Internal
   , getSeq
 #endif
   , View(..)
+  , view
   , toView
   , fromView
   , observeAllT
@@ -87,17 +94,16 @@ import Data.Semigroup (Semigroup(..))
 import qualified Data.Foldable as F
 import GHC.Generics (Generic)
 
-
--- | Based on the LogicT improvements in the paper, Reflection without
--- Remorse. Code is based on the code provided in:
--- https://github.com/atzeus/reflectionwithoutremorse
---
--- Note: that code is provided under an MIT license, so we use that as
--- well.
-
+-- | A view of the front end of a 'SeqT'.
 data View m a = Empty | a :< SeqT m a
   deriving Generic
 infixl 5 :<
+
+-- | A catamorphism for 'View's.
+view :: b -> (a -> SeqT m a -> b) -> View m a -> b
+view n _ Empty = n
+view _ c (a :< s) = c a s
+{-# INLINE view #-}
 
 deriving instance (Show a, Show (SeqT m a)) => Show (View m a)
 deriving instance (Read a, Read (SeqT m a)) => Read (View m a)
@@ -338,6 +344,29 @@ instance Monad m => MonadLogic (SeqT m) where
     case r of
       Empty -> single Nothing
       a :< t -> single (Just (a, t))
+
+  interleave m1 m2 = fromView $ interleaveView m1 m2
+
+  (toView -> m) >>- f = fromView $ m >>= view
+     (return Empty) (\a m' -> interleaveView (f a) (m' >>- f))
+
+  ifte (toView -> t) th (toView -> el) = fromView $ t >>= view
+    el
+    (\a s -> altView (th a) (s >>= th))
+
+  once (toView -> m) = fromView $ m >>= view
+    (return Empty)
+    (\a _ -> single a)
+
+  lnot (toView -> m) = fromView $ m >>= view
+    (single ()) (\ _ _ -> return Empty)
+
+-- | A version of 'interleave' that produces a view instead of a
+-- 'SeqT'. This lets us avoid @toView . fromView@ in '>>-'.
+interleaveView :: Monad m => SeqT m a -> SeqT m a -> m (View m a)
+interleaveView (toView -> m1) m2 = m1 >>= view
+  (toView m2)
+  (\a m1' -> return $ a :< interleave m2 m1')
 
 -- | @choose = foldr (\a s -> pure a <|> s) empty@
 --
