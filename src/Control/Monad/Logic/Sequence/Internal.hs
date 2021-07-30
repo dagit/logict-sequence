@@ -38,6 +38,8 @@ module Control.Monad.Logic.Sequence.Internal
   , fromView
   , observeAllT
   , observeAll
+  , observeManyT
+  , observeMany
   , observeT
   , observe
   , fromSeqT
@@ -336,6 +338,13 @@ observeT (toView -> m) = m >>= go where
   go Empty = return Nothing
 {-# INLINE observeT #-}
 
+observeManyT :: Monad m => Int -> SeqT m a -> m [a]
+observeManyT k m = toView m >>= go k where
+  go n _ | n <= 0 = return []
+  go _ Empty = return []
+  go n (a :< t) = liftM (a:) (observeManyT (n-1) t)
+{-# INLINEABLE observeManyT #-}
+
 observe :: Seq a -> Maybe a
 observe = runIdentity . observeT
 {-# INLINE observe #-}
@@ -343,6 +352,10 @@ observe = runIdentity . observeT
 observeAll :: Seq a -> [a]
 observeAll = runIdentity . observeAllT
 {-# INLINE observeAll #-}
+
+observeMany :: Int -> Seq a -> [a]
+observeMany n = runIdentity . observeManyT n
+{-# INLINE observeMany #-}
 
 -- | Convert @'SeqT' m a@ to @t m a@ when @t@ is some other logic monad
 -- transformer.

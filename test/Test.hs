@@ -33,6 +33,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Reader
 import Control.Monad.Except
 import Control.Monad.Morph (hoist)
+import Control.Monad.ST
 import Text.Read (readMaybe)
 
 -- | A generic "container" functor. We can use this with `Free` to get
@@ -128,6 +129,44 @@ main = hspec $ do
     it "works like logicT" $ hedgehog $ do
       ex <- forAll simpleSeqT
       observeAllT ex === L.observeAllT (Compat.fromSeqT ex)
+  describe "observeManyT" $ do
+    it "takes at most n" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 (-100) 100)
+      let alot :: SeqT (ST s) Int
+          alot = pure n <|> alot
+      length (runST (observeManyT n alot)) === max 0 n
+    it "takes what it can" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      k <- forAll $ Gen.integral (Range.linearFrom 0 0 10)
+      let alot :: Int -> SeqT (ST s) Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      length (runST (observeManyT n (alot (n-k)))) === max 0 (n-k)
+    it "in order" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      let alot :: Int -> SeqT (ST s) Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      runST (observeManyT n (alot n)) === [n,(n-1)..1]
+  describe "observeMany" $ do
+    it "takes at most n" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 (-100) 100)
+      let alot :: Seq Int
+          alot = pure n <|> alot
+      length (observeMany n alot) === max 0 n
+    it "takes what it can" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      k <- forAll $ Gen.integral (Range.linearFrom 0 0 10)
+      let alot :: Int -> Seq Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      length (observeMany n (alot (n-k))) === max 0 (n-k)
+    it "in order" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      let alot :: Int -> Seq Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      observeMany n (alot n) === [n,(n-1)..1]
   describe "read" $ do
     it "undoes show" $ hedgehog $ do
       ex <- forAll simpleSeqT
