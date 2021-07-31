@@ -16,7 +16,7 @@ import qualified Hedgehog.Range as Range
 import Test.Hspec (before, describe, hspec, it, shouldBe)
 import Test.Hspec.Hedgehog (PropertyT, diff, forAll, hedgehog, (/==), (===))
 import Control.Monad.Logic.Sequence
-import Control.Monad.Logic.Sequence.Compat
+import qualified Control.Monad.Logic.Sequence.Compat as Compat
 import Control.Monad.Logic.Sequence.Internal (SeqT (..))
 import Data.SequenceClass hiding ((:<), empty)
 import qualified Data.SequenceClass as S
@@ -33,6 +33,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Reader
 import Control.Monad.Except
 import Control.Monad.Morph (hoist)
+import Control.Monad.ST
 import Text.Read (readMaybe)
 
 -- | A generic "container" functor. We can use this with `Free` to get
@@ -108,7 +109,7 @@ genSeqT :: forall m a. MonadGen m => m a -> m (SeqT TestM a)
 genSeqT m = Gen.sized $ \sz -> do
   tsz <- Gen.integral (Range.linear 0 sz)
   genSeqTSized m tsz
-  
+
 simpleSeqT :: MonadGen m => m (SeqT TestM Int)
 simpleSeqT = genSeqT (Gen.integral $ Range.constant 0 5)
 
@@ -116,18 +117,56 @@ main :: IO ()
 main = hspec $ do
   describe "observe" $ do
     it "undoes pure" $ hedgehog $
-      observe (pure (3 :: Int)) === 3
+      observe (pure (3 :: Int)) === Just 3
   describe "observeT" $ do
     it "undoes lift" $ hedgehog $ do
       ex <- forAll simpleTestM
-      runMaybeT (observeT (lift (lift ex))) === runMaybeT (lift ex)
+      observeT (lift ex) === (Just <$> ex)
   describe "observeAllT" $ do
     it "undoes lift" $ hedgehog $ do
       ex <- forAll simpleTestM
       observeAllT (lift ex) === fmap (:[]) ex
     it "works like logicT" $ hedgehog $ do
       ex <- forAll simpleSeqT
-      observeAllT ex === L.observeAllT (fromSeqT ex)
+      observeAllT ex === L.observeAllT (Compat.fromSeqT ex)
+  describe "observeManyT" $ do
+    it "takes at most n" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 (-100) 100)
+      let alot :: SeqT (ST s) Int
+          alot = pure n <|> alot
+      length (runST (observeManyT n alot)) === max 0 n
+    it "takes what it can" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      k <- forAll $ Gen.integral (Range.linearFrom 0 0 10)
+      let alot :: Int -> SeqT (ST s) Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      length (runST (observeManyT n (alot (n-k)))) === max 0 (n-k)
+    it "in order" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      let alot :: Int -> SeqT (ST s) Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      runST (observeManyT n (alot n)) === [n,(n-1)..1]
+  describe "observeMany" $ do
+    it "takes at most n" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 (-100) 100)
+      let alot :: Seq Int
+          alot = pure n <|> alot
+      length (observeMany n alot) === max 0 n
+    it "takes what it can" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      k <- forAll $ Gen.integral (Range.linearFrom 0 0 10)
+      let alot :: Int -> Seq Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      length (observeMany n (alot (n-k))) === max 0 (n-k)
+    it "in order" $ hedgehog $ do
+      n <- forAll $ Gen.integral (Range.linearFrom 0 0 100)
+      let alot :: Int -> Seq Int
+          alot x | x <= 0 = empty
+          alot x = pure x <|> alot (x-1)
+      observeMany n (alot n) === [n,(n-1)..1]
   describe "read" $ do
     it "undoes show" $ hedgehog $ do
       ex <- forAll simpleSeqT
@@ -143,7 +182,7 @@ main = hspec $ do
     it "works like LogicT" $ hedgehog $ do
       s <- forAll simpleSeqT
       f :: Int -> SeqT TestM Int <- Fun.forAllFn (Fun.fn simpleSeqT)
-      fromLogicT (toLogicT s >>= toLogicT . f) === (s >>= f)
+      Compat.fromLogicT (Compat.toLogicT s >>= Compat.toLogicT . f) === (s >>= f)
     it "obeys monad associativity law" $ hedgehog $ do
       s <- forAll simpleSeqT
       f :: Int -> SeqT TestM Int <- Fun.forAllFn (Fun.fn simpleSeqT)
@@ -170,11 +209,11 @@ main = hspec $ do
     it "works like LogicT" $ hedgehog $ do
       s <- forAll simpleSeqT
       t <- forAll simpleSeqT
-      (s <|> t) === fromLogicT (fromSeqT s <|> fromSeqT t)
+      (s <|> t) === Compat.fromLogicT (Compat.fromSeqT s <|> Compat.fromSeqT t)
   describe "fromLogicT" $ do
     it "reverses fromSeqT" $ hedgehog $ do
       s <- forAll simpleSeqT
-      fromLogicT (fromSeqT s) === s
+      Compat.fromLogicT (Compat.fromSeqT s) === s
   describe "fromView" $ do
     it "reverses toView" $ hedgehog $ do
       s <- forAll simpleSeqT
@@ -188,7 +227,7 @@ main = hspec $ do
           x <- local (5+) ask
           y <- ask
           return (x, y)
-      runReader (runMaybeT (observeT foo)) 0 `shouldBe` Just (5, 0)
+      runReader (observeT foo) 0 `shouldBe` Just (5, 0)
   describe "MFunctor instance" $ do
     it "obeys the hoist identity law" $ hedgehog $ do
       s <- forAll simpleSeqT

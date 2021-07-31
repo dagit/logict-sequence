@@ -38,10 +38,10 @@ module Control.Monad.Logic.Sequence.Internal
   , fromView
   , observeAllT
   , observeAll
+  , observeManyT
+  , observeMany
   , observeT
   , observe
-  , observeMaybeT
-  , observeMaybe
   , fromSeqT
   , hoistPre
   , hoistPost
@@ -332,36 +332,30 @@ observeAllT (toView -> m) = m >>= go where
 {-# INLINEABLE observeAllT #-}
 {-# SPECIALIZE INLINE observeAllT :: Seq a -> Identity [a] #-}
 
-#if !MIN_VERSION_base(4,13,0)
-observeT :: Monad m => SeqT m a -> m a
-#else
-observeT :: MonadFail m => SeqT m a -> m a
-#endif
+observeT :: Monad m => SeqT m a -> m (Maybe a)
 observeT (toView -> m) = m >>= go where
-  go (a :< _) = return a
-  go Empty = fail "No results."
+  go (a :< _) = return (Just a)
+  go Empty = return Nothing
 {-# INLINE observeT #-}
 
-observe :: Seq a -> a
-observe (toView -> m) = case runIdentity m of
-  a :< _ -> a
-  Empty -> error "No results."
+observeManyT :: Monad m => Int -> SeqT m a -> m [a]
+observeManyT k m = toView m >>= go k where
+  go n _ | n <= 0 = return []
+  go _ Empty = return []
+  go n (a :< t) = liftM (a:) (observeManyT (n-1) t)
+{-# INLINEABLE observeManyT #-}
+
+observe :: Seq a -> Maybe a
+observe = runIdentity . observeT
 {-# INLINE observe #-}
-
-observeMaybeT :: Monad m => SeqT m (Maybe a) -> m (Maybe a)
-observeMaybeT (toView -> m) = m >>= go where
-  go (Just a :< _) = return (Just a)
-  go (Nothing :< rest) = toView rest >>= go
-  go Empty = return Nothing
-{-# INLINEABLE observeMaybeT #-}
-
-observeMaybe :: Seq (Maybe a) -> Maybe a
-observeMaybe = runIdentity . observeMaybeT
-{-# INLINE observeMaybe #-}
 
 observeAll :: Seq a -> [a]
 observeAll = runIdentity . observeAllT
 {-# INLINE observeAll #-}
+
+observeMany :: Int -> Seq a -> [a]
+observeMany n = runIdentity . observeManyT n
+{-# INLINE observeMany #-}
 
 -- | Convert @'SeqT' m a@ to @t m a@ when @t@ is some other logic monad
 -- transformer.

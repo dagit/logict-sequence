@@ -26,10 +26,10 @@ module Control.Monad.Logic.Sequence
   , fromView
   , observeAllT
   , observeAll
+  , observeManyT
+  , observeMany
   , observeT
   , observe
-  , observeMaybeT
-  , observeMaybe
   , module Control.Monad
   , module Control.Monad.Trans
 )
