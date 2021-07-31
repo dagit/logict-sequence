@@ -359,6 +359,9 @@ data BindSState a b m
 
 bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
 bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
+  next _ = return undefined
+-- TODO: fixme: this is an infinite loop right now
+{-
   {-# INLINE next #-}
   next (Boundary s_a) = do
     x <- next_a s_a
@@ -373,6 +376,7 @@ bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
       Yield b bs -> Yield b (InProgress s_a next_fa bs)
       Skip bs -> Skip (InProgress s_a next_fa bs)
       Done -> Skip (Boundary s_a)
+-}
 {-# INLINE[1] bind_s #-}
 
 instance Monad m => Fail.MonadFail (SeqT m) where
