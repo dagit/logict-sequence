@@ -12,13 +12,14 @@ jobs:
   github-actions:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         cabal: ["latest"]
         ghc: ["latest"]
         os: [ubuntu-latest, macOS-latest]
         include:
           - os: windows-latest
-            allow-failure: true
+            experimental: true
     env:
       CONFIG: "--enable-tests --enable-benchmarks"
     steps:
