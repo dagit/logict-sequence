@@ -51,6 +51,10 @@ module Control.Monad.Logic.Sequence.Internal
   , fromLogicT
   , chooseStreamM
   , chooseSeqT
+  , cons
+  , consM
+  , choose
+  , chooseM
 )
 where
 
@@ -339,6 +343,16 @@ alt_s (StreamM next_a a) (StreamM next_b b) = StreamM next (Just a, b)
       Yield x xs -> return (Yield x (Just xs, s_b))
 {-# INLINE[1] alt_s #-}
 
+-- | @cons a s = pure a <|> s@
+cons :: Monad m => a -> SeqT m a -> SeqT m a
+cons a s = fromView (return (a :< s))
+{-# INLINE cons #-}
+
+-- | @consM m s = lift m <|> s@
+consM :: Monad m => m a -> SeqT m a -> SeqT m a
+consM m s = fromView (liftM (:< s) m)
+{-# INLINE consM #-}
+
 instance Monad m => Monad (SeqT m) where
   {-# INLINE return #-}
   {-# INLINEABLE (>>=) #-}
@@ -416,6 +430,23 @@ instance Monad m => MonadLogic (SeqT m) where
     case r of
       Empty -> single Nothing
       a :< t -> single (Just (a, t))
+
+-- | @choose = foldr (\a s -> pure a <|> s) empty@
+--
+-- @choose :: Monad m => [a] -> SeqT m a@
+choose :: (F.Foldable t, Monad m) => t a -> SeqT m a
+choose = F.foldr cons empty
+{-# INLINABLE choose #-}
+
+-- | @chooseM = foldr (\ma s -> lift ma <|> s) empty@
+--
+-- @chooseM :: Monad m => [m a] -> SeqT m a@
+chooseM :: (F.Foldable t, Monad m) => t (m a) -> SeqT m a
+-- The idea here, which I hope is sensible, is to avoid building and
+-- restructuring queues unnecessarily. We end up building only *singleton*
+-- queues, which should hopefully be pretty cheap.
+chooseM = F.foldr consM empty
+{-# INLINABLE chooseM #-}
 
 observeAllT :: Monad m => SeqT m a -> m [a]
 observeAllT (toView -> m) = m >>= go where

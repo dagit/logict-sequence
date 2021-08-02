@@ -24,6 +24,10 @@ module Control.Monad.Logic.Sequence
   , View(..)
   , toView
   , fromView
+  , cons
+  , consM
+  , choose
+  , chooseM
   , observeAllT
   , observeAll
   , observeManyT
