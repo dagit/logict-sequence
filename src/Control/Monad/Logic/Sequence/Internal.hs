@@ -17,7 +17,7 @@
 #endif
 
 #if __GLASGOW_HASKELL__ >= 704
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE Trustworthy #-}
 #endif
 {-# OPTIONS_HADDOCK not-home #-}
 
@@ -56,6 +56,8 @@ module Control.Monad.Logic.Sequence.Internal
   , hoistPostUnexposed
   , toLogicT
   , fromLogicT
+  , chooseStreamM
+  , chooseSeqT
   , cons
   , consM
   , choose
@@ -63,7 +65,7 @@ module Control.Monad.Logic.Sequence.Internal
 )
 where
 
-import Control.Applicative
+import Control.Applicative as A
 import Control.Monad
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Identity (Identity(..))
@@ -143,7 +145,7 @@ instance (Show1 m, Monad m) => Show1 (View m) where
 -- it's really defined this way! However, the real implementation is different,
 -- so as to be more efficient in the face of deeply left-associated `<|>` or
 -- `mplus` applications.
-newtype SeqT m a = SeqT (Queue (m (View m a)))
+newtype SeqT m a = SeqT { runSeqT :: (Queue (m (View m a))) }
 
 #ifdef USE_PATTERN_SYNONYMS
 pattern MkSeqT :: Monad m => m (View m a) -> SeqT m a
@@ -174,16 +176,44 @@ type Seq = SeqT Identity
 
 fromView :: m (View m a) -> SeqT m a
 fromView = SeqT . S.singleton
-{-# INLINE fromView #-}
+{-# INLINE[0] fromView #-}
 
 toView :: Monad m => SeqT m a -> m (View m a)
-toView (SeqT s) = case S.viewl s of
-  S.EmptyL -> return Empty
-  h S.:< t -> h >>= \x -> case x of
-    Empty -> toView (SeqT t)
-    hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
-{-# INLINEABLE toView #-}
-{-# SPECIALIZE INLINE toView :: Seq a -> Identity (View Identity a) #-}
+toView (SeqT s0) = go s0 where
+  go s = case S.viewl s of
+    S.EmptyL -> return Empty
+    h S.:< t -> h >>= \x -> case x of
+      Empty -> go t
+      hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
+{-# INLINE[0] toView #-}
+
+data Step s a = Done | Yield a s | Skip s
+data StreamM m a = forall s. StreamM (s -> m (Step s a)) s
+
+stream :: Monad m => SeqT m a -> StreamM m a
+stream m = StreamM next m where
+  {-# INLINE next #-}
+  next s = do
+    x <- toView s
+    case x of
+      Empty -> return Done
+      h :< t -> return (Yield h t)
+{-# INLINE[1] stream #-}
+
+unstream :: Monad m => StreamM m a -> SeqT m a
+unstream (StreamM next s0) = fromView (unfold s0)
+  where
+  unfold s = do
+    v <- next s
+    case v of
+      Done -> return Empty
+      Skip xs -> unfold xs
+      Yield x xs -> return (x :< fromView (unfold xs))
+{-# INLINE[1] unstream #-}
+
+{-# RULES
+      "stream-unstream" [2] forall s. stream (unstream s) = s;
+  #-}
 
 {-
 Theorem: toView . fromView = id
@@ -208,6 +238,16 @@ m >>= \x -> case x of
   hi :< SeqT ti -> return (hi :< SeqT ti)
 = m
 -}
+
+newtype Fix1 f a = In1 { out1 :: f (Fix1 f a) a }
+
+chooseStreamM :: (F.Foldable f, Monad m) => f a -> StreamM m a
+chooseStreamM = StreamM (return . out1) . F.foldr (\a b -> In1 (Yield a b)) (In1 Done)
+{-# INLINE[1] chooseStreamM #-}
+
+chooseSeqT :: (F.Foldable f, Monad m) => f a -> SeqT m a
+chooseSeqT = unstream . chooseStreamM
+{-# INLINE[3] chooseSeqT #-}
 
 instance (Show (m (View m a)), Monad m) => Show (SeqT m a) where
   showsPrec d s = showParen (d > app_prec) $
@@ -244,13 +284,26 @@ instance (Show1 m, Monad m) => Show1 (SeqT m) where
 single :: Monad m => a -> m (View m a)
 single a = return (a :< mzero)
 {-# INLINE single #-}
-{-# SPECIALIZE INLINE single :: a -> Identity (View Identity a) #-}
 
 instance Monad m => Functor (SeqT m) where
   {-# INLINEABLE fmap #-}
-  fmap f (SeqT q) = SeqT $ fmap (liftM (fmap f)) q
-  {-# INLINABLE (<$) #-}
-  x <$ SeqT q = SeqT $ fmap (liftM (x <$)) q
+  fmap = fmapSeqT
+
+fmapSeqT :: Monad m => (a -> b) -> SeqT m a -> SeqT m b
+fmapSeqT f s = unstream (fmap_s f (stream s))
+{-# INLINEABLE [3] fmapSeqT #-}
+
+fmap_s :: Monad m => (a -> b) -> StreamM m a -> StreamM m b
+fmap_s f (StreamM next_a a0) = StreamM next a0
+  where
+  {-# INLINE next #-}
+  next a = do
+    x <- next_a a
+    case x of
+      Done -> return Done
+      Skip s -> return (Skip s)
+      Yield y ys -> return (Yield (f y) ys)
+{-# INLINEABLE [1] fmap_s #-}
 
 instance Monad m => Applicative (SeqT m) where
   {-# INLINE pure #-}
@@ -266,16 +319,35 @@ instance Monad m => Applicative (SeqT m) where
 instance Monad m => Alternative (SeqT m) where
   {-# INLINE empty #-}
   {-# INLINEABLE (<|>) #-}
-  {-# SPECIALIZE INLINE (<|>) :: Seq a -> Seq a -> Seq a #-}
   empty = SeqT S.empty
-  m <|> n = fromView (altView m n)
+  (<|>) = alt
 
-altView :: Monad m => SeqT m a -> SeqT m a -> m (View m a)
-altView (toView -> m) n = m >>= \x -> case x of
-  Empty -> toView n
-  h :< t -> return (h :< cat t n)
-    where cat (SeqT l) (SeqT r) = SeqT (l S.>< r)
-{-# INLINE altView #-}
+alt :: Monad m => SeqT m a -> SeqT m a -> SeqT m a
+alt a b = unstream (alt_s (stream a) (stream b))
+{-# INLINE[3] alt #-}
+
+alt_s :: Monad m => StreamM m a -> StreamM m a -> StreamM m a
+alt_s (StreamM next_a a) (StreamM next_b b) = StreamM next (Just a, b)
+  where
+  {-# INLINE next #-}
+  next (Nothing, s_b) = do
+    x <- next_b s_b
+    return $ case x of
+      Done -> Done
+      Skip vs -> Skip (Nothing, vs)
+      Yield v vs -> Yield v (Nothing, vs)
+  next (Just s_a, s_b) = do
+    y <- next_a s_a
+    case y of
+      Done -> do
+        x <- next_b s_b
+        return $ case x of
+          Done -> Done
+          Skip vs -> Skip (Nothing, vs)
+          Yield v vs -> Yield v (Nothing, vs)
+      Skip vs -> return (Skip (Just vs, s_b))
+      Yield x xs -> return (Yield x (Just xs, s_b))
+{-# INLINE[1] alt_s #-}
 
 -- | @cons a s = pure a <|> s@
 cons :: Monad m => a -> SeqT m a -> SeqT m a
@@ -290,21 +362,42 @@ consM m s = fromView (liftM (:< s) m)
 instance Monad m => Monad (SeqT m) where
   {-# INLINE return #-}
   {-# INLINEABLE (>>=) #-}
-  {-# SPECIALIZE INLINE (>>=) :: Seq a -> (a -> Seq b) -> Seq b #-}
   return = fromView . single
-  (toView -> m) >>= f = fromView $ m >>= \x -> case x of
-    Empty -> return Empty
-    h :< t -> f h `altView` (t >>= f)
-
-  {-# INLINEABLE (>>) #-}
-  (toView -> m) >> n = fromView $ m >>= \x -> case x of
-    Empty -> return Empty
-    _ :< t -> n `altView` (t >> n)
-
+  (>>=) = bind
 #if !MIN_VERSION_base(4,13,0)
   {-# INLINEABLE fail #-}
   fail = Fail.fail
 #endif
+
+bind :: Monad m => SeqT m a -> (a -> SeqT m b) -> SeqT m b
+bind m f = unstream (bind_s (stream m) (stream . f))
+{-# INLINE[3] bind #-}
+
+data BindSState a b m
+  = Boundary a
+  | forall s. InProgress a (s -> m (Step s b)) s
+
+bind_s :: Monad m => StreamM m a -> (a -> StreamM m b) -> StreamM m b
+bind_s (StreamM next_a a0) f = StreamM next (Boundary a0) where
+  next _ = return undefined
+-- TODO: fixme: this is an infinite loop right now
+{-
+  {-# INLINE next #-}
+  next (Boundary s_a) = do
+    x <- next_a s_a
+    return $ case x of
+      Yield a _ -> case f a of
+        StreamM next_fa fa0 -> Skip (InProgress s_a next_fa fa0)
+      Skip as -> Skip (Boundary as)
+      Done -> Done
+  next (InProgress s_a next_fa s_fa) = do
+    x <- next_fa s_fa
+    return $ case x of
+      Yield b bs -> Yield b (InProgress s_a next_fa bs)
+      Skip bs -> Skip (InProgress s_a next_fa bs)
+      Done -> Skip (Boundary s_a)
+-}
+{-# INLINE[1] bind_s #-}
 
 instance Monad m => Fail.MonadFail (SeqT m) where
   {-# INLINEABLE fail #-}
@@ -313,7 +406,7 @@ instance Monad m => Fail.MonadFail (SeqT m) where
 instance Monad m => MonadPlus (SeqT m) where
   {-# INLINE mzero #-}
   {-# INLINE mplus #-}
-  mzero = Control.Applicative.empty
+  mzero = A.empty
   mplus = (<|>)
 
 #if MIN_VERSION_base(4,9,0)
@@ -337,8 +430,7 @@ instance MonadTrans SeqT where
   lift m = fromView (m >>= single)
 
 instance Monad m => MonadLogic (SeqT m) where
-  {-# INLINE msplit #-}
-  {-# SPECIALIZE INLINE msplit :: Seq a -> Seq (Maybe (a, Seq a)) #-}
+  {-# INLINE[3] msplit #-}
   msplit (toView -> m) = fromView $ do
     r <- m
     case r of
@@ -390,7 +482,6 @@ observeAllT (toView -> m) = m >>= go where
   go (a :< t) = liftM (a:) (toView t >>= go)
   go _ = return []
 {-# INLINEABLE observeAllT #-}
-{-# SPECIALIZE INLINE observeAllT :: Seq a -> Identity [a] #-}
 
 observeT :: Monad m => SeqT m a -> m (Maybe a)
 observeT (toView -> m) = m >>= go where
