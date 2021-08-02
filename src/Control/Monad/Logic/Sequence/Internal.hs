@@ -76,7 +76,7 @@ import Control.Monad.State.Class (MonadState (..))
 import Control.Monad.Error.Class (MonadError (..))
 import Control.Monad.Morph (MFunctor (..))
 import qualified Data.SequenceClass as S
-import Control.Monad.Logic.Sequence.Internal.Queue (Queue)
+import Control.Monad.Logic.Sequence.Internal.QueueCopy (Queue)
 import qualified Text.Read as TR
 import Data.Function (on)
 #if MIN_VERSION_base(4,9,0)
@@ -181,7 +181,7 @@ toView (SeqT s) = case S.viewl s of
   S.EmptyL -> return Empty
   h S.:< t -> h >>= \x -> case x of
     Empty -> toView (SeqT t)
-    hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
+    hi :< SeqT ti -> return (hi :< SeqT (ti S.|> toView (SeqT t)))
 {-# INLINEABLE toView #-}
 {-# SPECIALIZE INLINE toView :: Seq a -> Identity (View Identity a) #-}
 
@@ -268,24 +268,7 @@ instance Monad m => Alternative (SeqT m) where
   {-# INLINEABLE (<|>) #-}
   {-# SPECIALIZE INLINE (<|>) :: Seq a -> Seq a -> Seq a #-}
   empty = SeqT S.empty
-  m <|> n = fromView (altView m n)
-
-altView :: Monad m => SeqT m a -> SeqT m a -> m (View m a)
-altView (toView -> m) n = m >>= \x -> case x of
-  Empty -> toView n
-  h :< t -> return (h :< cat t n)
-    where cat (SeqT l) (SeqT r) = SeqT (l S.>< r)
-{-# INLINE altView #-}
-
--- | @cons a s = pure a <|> s@
-cons :: Monad m => a -> SeqT m a -> SeqT m a
-cons a s = fromView (return (a :< s))
-{-# INLINE cons #-}
-
--- | @consM m s = lift m <|> s@
-consM :: Monad m => m a -> SeqT m a -> SeqT m a
-consM m s = fromView (liftM (:< s) m)
-{-# INLINE consM #-}
+  SeqT m <|> n = SeqT (m S.|> toView n)
 
 instance Monad m => Monad (SeqT m) where
   {-# INLINE return #-}
@@ -294,12 +277,12 @@ instance Monad m => Monad (SeqT m) where
   return = fromView . single
   (toView -> m) >>= f = fromView $ m >>= \x -> case x of
     Empty -> return Empty
-    h :< t -> f h `altView` (t >>= f)
+    h :< t -> toView (f h <|> (t >>= f))
 
   {-# INLINEABLE (>>) #-}
   (toView -> m) >> n = fromView $ m >>= \x -> case x of
     Empty -> return Empty
-    _ :< t -> n `altView` (t >> n)
+    _ :< t -> toView (n <|> (t >> n))
 
 #if !MIN_VERSION_base(4,13,0)
   {-# INLINEABLE fail #-}
@@ -352,7 +335,7 @@ instance Monad m => MonadLogic (SeqT m) where
 
   ifte (toView -> t) th (toView -> el) = fromView $ t >>= view
     el
-    (\a s -> altView (th a) (s >>= th))
+    (\a s -> toView $ th a <|> (s >>= th))
 
   once (toView -> m) = fromView $ m >>= view
     (return Empty)
@@ -367,6 +350,16 @@ interleaveView :: Monad m => SeqT m a -> SeqT m a -> m (View m a)
 interleaveView (toView -> m1) m2 = m1 >>= view
   (toView m2)
   (\a m1' -> return $ a :< interleave m2 m1')
+
+-- | @cons a s = pure a <|> s@
+cons :: Monad m => a -> SeqT m a -> SeqT m a
+cons a s = fromView (return (a :< s))
+{-# INLINE cons #-}
+
+-- | @consM m s = lift m <|> s@
+consM :: Monad m => m a -> SeqT m a -> SeqT m a
+consM m s = fromView (liftM (:< s) m)
+{-# INLINE consM #-}
 
 -- | @choose = foldr (\a s -> pure a <|> s) empty@
 --

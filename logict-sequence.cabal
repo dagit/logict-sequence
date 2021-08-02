@@ -41,8 +41,8 @@ library
                     , Control.Monad.Logic.Sequence.Compat
                     , Control.Monad.Logic.Sequence.Morph
                     , Control.Monad.Logic.Sequence.Internal
-                    , Control.Monad.Logic.Sequence.Internal.Queue
-                    , Control.Monad.Logic.Sequence.Internal.AsUnitLoop
+                    , Control.Monad.Logic.Sequence.Internal.QueueCopy
+                    , Control.Monad.Logic.Sequence.Internal.Any
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -51,13 +51,13 @@ library
     -- other-extensions:
     build-depends: base >=4.5 && <5
     build-depends: mtl >=2.0 && <2.3
-    build-depends: type-aligned >= 0.9.6 && < 0.10
     build-depends: sequence >= 0.9.8 && < 0.10
     build-depends: logict >= 0.7.1.0 && < 0.8
     build-depends: mmorph
+    build-depends: transformers
 
     if impl(ghc < 8.0)
-       build-depends: fail, transformers
+       build-depends: fail
 
     if impl(ghc < 7.6)
        build-depends: ghc-prim

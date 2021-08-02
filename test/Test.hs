@@ -22,7 +22,7 @@ import qualified Control.Monad.Logic.Sequence.Compat as Compat
 import Control.Monad.Logic.Sequence.Internal (SeqT (..))
 import Data.SequenceClass hiding ((:<), empty)
 import qualified Data.SequenceClass as S
-import Control.Monad.Logic.Sequence.Internal.Queue
+import Control.Monad.Logic.Sequence.Internal.QueueCopy
 import Data.Functor.Identity
 import Control.Applicative
 import Data.Function (fix, on)
