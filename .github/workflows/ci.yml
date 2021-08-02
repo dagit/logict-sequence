@@ -44,7 +44,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-
       - run: cabal v2-build $CONFIG all
       - run: cabal v2-test $CONFIG all
-      - run: cabal v2-haddock $CONFIG
+      - run: if ([ $HCNUMVER -ge 70800 ]) ; then cabal v2-haddock $CONFIG ; fi
       - run: cabal v2-sdist
   hvr-style:
     name: Haskell-CI Linux - GHC ${{ matrix.ghc }}
@@ -200,7 +200,7 @@ jobs:
           ${CABAL} -vnormal check
       - name: haddock
         run: |
-          $CABAL v2-haddock $ARG_COMPILER --with-haddock $HADDOCK $ARG_TESTS $ARG_BENCH all
+          if ([ $HCNUMVER -ge 70800 ]) ; then $CABAL v2-haddock $ARG_COMPILER --with-haddock $HADDOCK $ARG_TESTS $ARG_BENCH all; fi
       - name: unconstrained build
         run: |
           rm -f cabal.project.local
