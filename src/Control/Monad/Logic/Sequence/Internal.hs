@@ -7,7 +7,11 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+#if __GLASGOW_HASKELL__ < 710
+{-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+#endif
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -92,6 +96,7 @@ import Data.Semigroup (Semigroup(..))
 #endif
 
 import qualified Data.Foldable as F
+import qualified Data.Traversable as T
 import GHC.Generics (Generic)
 
 -- | A view of the front end of a 'SeqT'.
@@ -110,6 +115,8 @@ deriving instance (Read a, Read (SeqT m a)) => Read (View m a)
 deriving instance (Eq a, Eq (SeqT m a)) => Eq (View m a)
 deriving instance (Ord a, Ord (SeqT m a)) => Ord (View m a)
 deriving instance Monad m => Functor (View m)
+deriving instance (Monad m, F.Foldable m) => F.Foldable (View m)
+deriving instance (Monad m, T.Traversable m) => T.Traversable (View m)
 
 #if MIN_VERSION_base(4,9,0)
 instance (Eq1 m, Monad m) => Eq1 (View m) where
@@ -432,6 +439,22 @@ toLogicT = fromSeqT
 
 fromLogicT :: Monad m => L.LogicT m a -> SeqT m a
 fromLogicT (L.LogicT f) = fromView $ f (\a v -> return (a :< fromView v)) (return Empty)
+
+instance (Monad m, F.Foldable m) => F.Foldable (SeqT m) where
+  foldMap f = F.foldMap (F.foldMap f) . toView
+
+instance (Monad m, T.Traversable m) => T.Traversable (SeqT m) where
+  -- Why is this lawful? It comes down to the fact that toView and
+  -- fromView are inverses, modulo representation and detailed
+  -- strictness. They witness a sort of stepwise isomorphism between
+  -- SeqT and the obviously traversable
+  --
+  --   newtype ML m a = ML (m (View m a))
+  --
+  -- Why can't we just use the derived Traversable instance? It doesn't
+  -- respect ==. See https://github.com/dagit/logict-sequence/issues/51#issuecomment-896242724
+  -- for an example.
+  traverse f = fmap fromView . T.traverse (T.traverse f) . toView
 
 -- | 'hoist' is 'hoistPre'.
 instance MFunctor SeqT where
