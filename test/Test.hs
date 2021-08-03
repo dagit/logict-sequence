@@ -3,7 +3,7 @@
 {-# language FlexibleContexts #-}
 {-# language UndecidableInstances #-}
 {-# language GeneralizedNewtypeDeriving #-}
-{-# language DeriveFunctor #-}
+{-# language DeriveTraversable #-}
 {-# language StandaloneDeriving #-}
 {-# language ViewPatterns #-}
 module Main(main) where
@@ -42,7 +42,7 @@ import Data.List (cycle)
 -- | A generic "container" functor. We can use this with `Free` to get
 -- an inspectable `Monad` that's unlikely to hide any mistakes we make.
 data TestF a = TestF !Int [a]
-  deriving (Show, Read, Eq, Generic, Functor)
+  deriving (Show, Read, Eq, Generic, Functor, Foldable, Traversable)
 
 instance Fun.Arg a => Fun.Arg (TestF a)
 
@@ -74,7 +74,7 @@ genTestFSized m sz = do
   pure (TestF i goop)
 
 newtype TestM a = TestM (Free TestF a)
-  deriving (Show, Read, Eq, Generic, Functor, Applicative, Monad)
+  deriving (Show, Read, Eq, Generic, Functor, Applicative, Monad, Foldable, Traversable)
 
 genTestMSized :: MonadGen m => (Size -> m a) -> Size -> m (TestM a)
 genTestMSized = \m sz -> TestM <$> go m sz
@@ -115,6 +115,27 @@ genSeqT m = Gen.sized $ \sz -> do
 
 simpleSeqT :: MonadGen m => m (SeqT TestM Int)
 simpleSeqT = genSeqT (Gen.integral $ Range.constant 0 5)
+
+genSeqSized :: forall m a. MonadGen m => m a -> Size -> m (Seq a)
+genSeqSized m sz = do
+  part <- splat sz
+  goop <- traverse (fmap Identity <$> genViewSizedId m) part
+  pure $ SeqT $ listToQueue goop
+
+genViewSizedId :: forall m a. MonadGen m => m a -> Size -> m (View Identity a)
+genViewSizedId _ sz | sz <= 1 = pure Empty
+genViewSizedId m sz = do
+  a <- m
+  s <- genSeqSized m (sz - 1)
+  pure (a :< s)
+
+genSeq :: forall m a. MonadGen m => m a -> m (Seq a)
+genSeq m = Gen.sized $ \sz -> do
+  tsz <- Gen.integral (Range.linear 0 sz)
+  genSeqSized m tsz
+
+simpleSeq :: MonadGen m => m (Seq Int)
+simpleSeq = genSeq (Gen.integral $ Range.constant 0 5)
 
 main :: IO ()
 main = hspec $ do
@@ -376,13 +397,24 @@ main = hspec $ do
           (chooseM lst)
           (foldr (\ma s -> lift ma <|> s) empty lst)
 
+  describe "foldMap" $ do
+    it "works like LogicT" $ hedgehog $ do
+      s <- forAll simpleSeqT
+      f :: Int -> [Int] <- Fun.forAllFn (Fun.fn (Gen.list (Range.linear 0 5) (Gen.int (Range.constant 0 10000))))
+      foldMap f s === foldMap f (Compat.toLogicT s)
+
+  describe "traverse" $ do
+    it "works like LogicT" $ hedgehog $ do
+      s <- forAll simpleSeq
+      f :: Int -> Identity Int <- (Identity .) <$> Fun.forAllFn (Fun.fn (Gen.int (Range.constant 0 10000)))
+      traverse f s === (Compat.fromLogicT <$> traverse f (Compat.toLogicT s))
 
 -- -------
 -- Reimplementation of Control.Monad.Free without the need
 -- to futz with Data.Functor.Classes.
 
 data Free f a = Pure a | Free (f (Free f a))
-  deriving Functor
+  deriving (Functor, Foldable, Traversable)
 deriving instance (Show a, Show (f (Free f a))) => Show (Free f a)
 deriving instance (Read a, Read (f (Free f a))) => Read (Free f a)
 deriving instance (Eq a, Eq (f (Free f a))) => Eq (Free f a)
