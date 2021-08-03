@@ -1,5 +1,10 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE DeriveTraversable #-}
+#if __GLASGOW_HASKELL__ < 710
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+#endif
 
 #if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE Safe #-}
@@ -7,17 +12,11 @@
 
 module Control.Monad.Logic.Sequence.Internal.Queue
 (  Queue
-  , MSeq(..)
-  , AsUnitLoop(..)
 )
 where
 
-import Data.TASequence.FastCatQueue hiding ((:<))
-import qualified Data.TASequence.FastCatQueue as TA
 import Data.SequenceClass hiding ((:<))
 import qualified Data.SequenceClass as S
-
-import Control.Monad.Logic.Sequence.Internal.AsUnitLoop (AsUnitLoop (..))
 
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative
@@ -33,6 +32,7 @@ import Data.Semigroup (Semigroup(..))
 
 import qualified Data.Foldable as F
 import qualified Data.Traversable as T
+import qualified Control.Monad.Logic.Sequence.Internal.ScheduledQueue as SQ
 
 
 -- | Based on the LogicT improvements in the paper, Reflection without
@@ -42,37 +42,44 @@ import qualified Data.Traversable as T
 -- Note: that code is provided under an MIT license, so we use that as
 -- well.
 
-type Queue = MSeq FastTCQueue
+data Queue a
+  = Empty
+  | a :< {-# UNPACK #-} !(SQ.Queue (Queue a))
+  deriving (Functor, F.Foldable, T.Traversable)
 
-newtype MSeq s a = MSeq { getMS :: s (AsUnitLoop a) () () }
-
-instance TASequence s => Sequence (MSeq s) where
+instance Sequence Queue where
   {-# INLINE empty #-}
-  empty = MSeq tempty
+  empty = Empty
   {-# INLINE singleton #-}
-  singleton = MSeq . tsingleton . UL
+  singleton a = a :< S.empty
   {-# INLINE (><) #-}
-  l >< r = MSeq (getMS l TA.>< getMS r)
+  Empty >< r = r
+  q >< Empty = q
+  (a :< q) >< r = a :< (q |> r)
   {-# INLINE (|>) #-}
-  l |> x = MSeq (getMS l TA.|> UL x)
+  l |> x = l >< singleton x
   {-# INLINE (<|) #-}
-  x <| r = MSeq (UL x TA.<| getMS r)
+  x <| r = singleton x >< r
   {-# INLINE viewl #-}
-  viewl s = case tviewl (getMS s) of
-    TAEmptyL -> EmptyL
-    UL h TA.:< t -> h S.:< MSeq t
-  {-# INLINE viewr #-}
-  viewr s = case tviewr (getMS s) of
-    TAEmptyR -> EmptyR
-    p TA.:> UL l -> MSeq p S.:> l
+  viewl Empty     = EmptyL
+  viewl (x :< q0)  = x S.:< case viewl q0 of
+    EmptyL -> Empty
+    t S.:< q'  -> linkAll t q'
+    where
+    linkAll :: Queue a -> SQ.Queue (Queue a) -> Queue a
+    linkAll t@(y :< q) q' = case viewl q' of
+      EmptyL -> t
+      h S.:< t' -> y :< (q |> linkAll h t')
+    linkAll Empty _ = error "Invariant failure"
+
 
 #if MIN_VERSION_base(4,9,0)
-instance TASequence s => Semigroup (MSeq s a) where
+instance Semigroup (Queue a) where
   {-# INLINE (<>) #-}
   (<>) = (S.><)
 #endif
 
-instance TASequence s => Monoid (MSeq s a) where
+instance Monoid (Queue a) where
   {-# INLINE mempty #-}
   mempty = S.empty
   {-# INLINE mappend #-}
@@ -81,20 +88,3 @@ instance TASequence s => Monoid (MSeq s a) where
 #else
   mappend = (S.><)
 #endif
-
-instance TASequence s => Functor (MSeq s) where
-  {-# INLINEABLE fmap #-}
-  fmap f (MSeq s) = MSeq (tmap (\(UL x) -> UL (f x)) s)
-
-instance TASequence s => F.Foldable (MSeq s) where
-  {-# INLINEABLE foldMap #-}
-  foldMap f = fm where
-    fm q = case viewl q of
-      EmptyL -> mempty
-      h S.:< t -> f h `mappend` fm t
-
-instance TASequence s => T.Traversable (MSeq s) where
-  {-# INLINEABLE sequenceA #-}
-  sequenceA q = case viewl q of
-    EmptyL -> pure S.empty
-    h S.:< t -> pure (S.<|) <*> h <*> T.sequenceA t
