@@ -21,9 +21,10 @@
 #endif
 
 #if __GLASGOW_HASKELL__ >= 704
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE Trustworthy #-}
 #endif
 {-# OPTIONS_HADDOCK not-home #-}
+{- OPTIONS_GHC -ddump-simpl -dsuppress-coercions #-}
 
 -- | Based on the LogicT improvements in the paper, Reflection without
 -- Remorse. Code is based on the code provided in:
@@ -190,7 +191,7 @@ type Seq = SeqT Identity
 
 fromView :: m (View m a) -> SeqT m a
 fromView = SeqT . S.singleton
-{-# INLINE fromView #-}
+{-# INLINE [1] fromView #-}
 
 toView :: Monad m => SeqT m a -> m (View m a)
 toView (SeqT s) = case S.viewl s of
@@ -198,8 +199,19 @@ toView (SeqT s) = case S.viewl s of
   h S.:< t -> h >>= \x -> case x of
     Empty -> toView (SeqT t)
     hi :< SeqT ti -> return (hi :< SeqT (ti S.>< t))
-{-# INLINEABLE toView #-}
-{-# SPECIALIZE INLINE toView :: Seq a -> Identity (View Identity a) #-}
+{-# INLINEABLE [1] toView #-}
+
+-- For now, we don't assume the monad identity law holds for the underlying
+-- monad. We may re-evaluate that later, but it's a bit tricky to document the
+-- detailed strictness requirements properly.
+--
+-- We do, however, assume that `pure /= _|_`, or that `>>=` doesn't `seq` on
+-- its second argument, and that we can therefore eta-reduce `\x -> pure x` to
+-- just `pure`. It seems quite safe to assume that at least one of these is
+-- true, since in real code they're virtually always *both* true.
+{-# RULES
+"toView . fromView" forall m. toView (fromView m) = m >>= return
+ #-}
 
 {-
 Theorem: toView . fromView = id
@@ -222,7 +234,8 @@ m >>= \x -> case x of
 m >>= \x -> case x of
   Empty -> return Empty
   hi :< SeqT ti -> return (hi :< SeqT ti)
-= m
+= m >>= \x -> return x
+= m -- assuming the appropriate identity law holds for the underlying monad.
 -}
 
 instance (Show (m (View m a)), Monad m) => Show (SeqT m a) where
@@ -260,7 +273,6 @@ instance (Show1 m, Monad m) => Show1 (SeqT m) where
 single :: Monad m => a -> m (View m a)
 single a = return (a :< mzero)
 {-# INLINE single #-}
-{-# SPECIALIZE INLINE single :: a -> Identity (View Identity a) #-}
 
 instance Monad m => Functor (SeqT m) where
   {-# INLINEABLE fmap #-}
@@ -282,7 +294,6 @@ instance Monad m => Applicative (SeqT m) where
 instance Monad m => Alternative (SeqT m) where
   {-# INLINE empty #-}
   {-# INLINEABLE (<|>) #-}
-  {-# SPECIALIZE INLINE (<|>) :: Seq a -> Seq a -> Seq a #-}
   empty = SeqT S.empty
   m <|> n = fromView (altView m n)
 
@@ -306,7 +317,6 @@ consM m s = fromView (liftM (:< s) m)
 instance Monad m => Monad (SeqT m) where
   {-# INLINE return #-}
   {-# INLINEABLE (>>=) #-}
-  {-# SPECIALIZE INLINE (>>=) :: Seq a -> (a -> Seq b) -> Seq b #-}
   return = fromView . single
   (toView -> m) >>= f = fromView $ m >>= \x -> case x of
     Empty -> return Empty
@@ -337,7 +347,7 @@ instance Monad m => Semigroup (SeqT m a) where
   {-# INLINE (<>) #-}
   {-# INLINE sconcat #-}
   (<>) = mplus
-  sconcat = foldr1 mplus
+  sconcat = F.asum
 #endif
 
 instance Monad m => Monoid (SeqT m a) where
@@ -354,7 +364,6 @@ instance MonadTrans SeqT where
 
 instance Monad m => MonadLogic (SeqT m) where
   {-# INLINE msplit #-}
-  {-# SPECIALIZE INLINE msplit :: Seq a -> Seq (Maybe (a, Seq a)) #-}
   msplit (toView -> m) = fromView $ do
     r <- m
     case r of
@@ -401,19 +410,23 @@ chooseM :: (F.Foldable t, Monad m) => t (m a) -> SeqT m a
 chooseM = F.foldr consM empty
 {-# INLINABLE chooseM #-}
 
+-- | Perform all the actions in a 'SeqT' and gather the results.
 observeAllT :: Monad m => SeqT m a -> m [a]
 observeAllT (toView -> m) = m >>= go where
   go (a :< t) = liftM (a:) (toView t >>= go)
   go _ = return []
 {-# INLINEABLE observeAllT #-}
-{-# SPECIALIZE INLINE observeAllT :: Seq a -> Identity [a] #-}
 
+-- | Perform actions in a 'SeqT' until one of them produces a
+-- result. Returns 'Nothing' if there are no results.
 observeT :: Monad m => SeqT m a -> m (Maybe a)
 observeT (toView -> m) = m >>= go where
   go (a :< _) = return (Just a)
   go Empty = return Nothing
 {-# INLINE observeT #-}
 
+-- | @observeManyT n s@ performs actions in @s@ until it produces
+-- @n@ results or terminates. All the gathered results are returned.
 observeManyT :: Monad m => Int -> SeqT m a -> m [a]
 observeManyT k m = toView m >>= go k where
   go n _ | n <= 0 = return []
@@ -421,14 +434,17 @@ observeManyT k m = toView m >>= go k where
   go n (a :< t) = liftM (a:) (observeManyT (n-1) t)
 {-# INLINEABLE observeManyT #-}
 
+-- | Get the first result in a 'Seq', if there is one.
 observe :: Seq a -> Maybe a
 observe = runIdentity . observeT
 {-# INLINE observe #-}
 
+-- | Get all the results in a 'Seq'.
 observeAll :: Seq a -> [a]
 observeAll = runIdentity . observeAllT
 {-# INLINE observeAll #-}
 
+-- | @observeMany n s@ gets up to @n@ results from a 'Seq'.
 observeMany :: Int -> Seq a -> [a]
 observeMany n = runIdentity . observeManyT n
 {-# INLINE observeMany #-}
