@@ -116,7 +116,16 @@ deriving instance (Eq a, Eq (SeqT m a)) => Eq (View m a)
 deriving instance (Ord a, Ord (SeqT m a)) => Ord (View m a)
 deriving instance Monad m => Functor (View m)
 deriving instance (Monad m, F.Foldable m) => F.Foldable (View m)
-deriving instance (Monad m, T.Traversable m) => T.Traversable (View m)
+instance (Monad m, T.Traversable m) => T.Traversable (View m) where
+  traverse _ Empty = pure Empty
+  traverse f (x :< xs) =
+    liftA2 (\y ys -> y :< fromView ys) (f x) (T.traverse (T.traverse f) . toView $ xs)
+--  The derived instance would use
+--
+--    traverse f (x :< xs) = liftA2 (:<) (f x) (traverse f xs)
+--
+--  Inlining the inner `traverse` reveals an application of `fmap` which
+--  we fuse with `liftA2`, in case `fmap` isn't free.
 
 #if MIN_VERSION_base(4,9,0)
 instance (Eq1 m, Monad m) => Eq1 (View m) where
