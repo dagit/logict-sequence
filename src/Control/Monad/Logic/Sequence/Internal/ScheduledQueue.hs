@@ -22,7 +22,8 @@
 
 module Control.Monad.Logic.Sequence.Internal.ScheduledQueue
   (Queue) where
-import Data.SequenceClass hiding ((:>))
+import Data.SequenceClass (Sequence, ViewL (..))
+import qualified Data.SequenceClass as S
 import Data.Foldable
 import qualified Data.Traversable as T
 import Control.Monad.Logic.Sequence.Internal.Any
@@ -86,13 +87,13 @@ instance Sequence Queue where
 instance Foldable Queue where
   foldr c n = \q -> go q
     where
-      go q = case viewl q of
+      go q = case S.viewl q of
         EmptyL -> n
         h :< t -> c h (go t)
 #if MIN_VERSION_base(4,6,0)
   foldl' f b0 = \q -> go q b0
     where
-      go q !b = case viewl q of
+      go q !b = case S.viewl q of
         EmptyL -> b
         h :< t -> go t (f b h)
 #endif
@@ -100,9 +101,9 @@ instance Foldable Queue where
 instance T.Traversable Queue where
   traverse f = fmap fromList . go
     where
-      go q = case viewl q of
+      go q = case S.viewl q of
         EmptyL -> A.pure []
         h :< t -> A.liftA2 (:) (f h) (go t)
 
 fromList :: [a] -> Queue a
-fromList = foldl' (|>) empty
+fromList = foldl' (S.|>) S.empty
