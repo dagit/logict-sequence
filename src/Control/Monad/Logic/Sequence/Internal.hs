@@ -82,6 +82,9 @@ import Control.Monad.Error.Class (MonadError (..))
 import Control.Monad.Morph (MFunctor (..))
 import qualified Data.SequenceClass as S
 import Control.Monad.Logic.Sequence.Internal.Queue (Queue)
+#if MIN_VERSION_base(4,8,0)
+import Control.Monad.Zip (MonadZip (..))
+#endif
 import qualified Text.Read as TR
 import Data.Function (on)
 #if MIN_VERSION_base(4,9,0)
@@ -555,3 +558,28 @@ instance MonadError e m => MonadError e (SeqT m) where
     where
       go Empty = Empty
       go (a :< s) = a :< catchError s h
+
+#if MIN_VERSION_base(4,8,0)
+instance MonadZip m => MonadZip (SeqT m) where
+  mzipWith f (toView -> m) (toView -> n) = fromView $
+    mzipWith go m n
+    where
+      go (a :< as) (b :< bs) = f a b :< mzipWith f as bs
+      go _ _ = Empty
+
+  munzip (toView -> m)
+    | (l, r) <- munzip (fmap go m) = (fromView l, fromView r)
+    where
+      go Empty = (Empty, Empty)
+      go ((a, b) :< asbs) = (a :< as, b :< bs)
+        where
+          -- We want to be lazy so we don't force the entire
+          -- structure unnecessarily. But we don't want to introduce
+          -- a space leak, so we're careful to create selector thunks
+          -- to deconstruct the rest of the chain.
+          {-# NOINLINE muabs #-}
+          {-# NOINLINE as #-}
+          {-# NOINLINE bs #-}
+          muabs = munzip asbs
+          (as, bs) = muabs
+#endif
