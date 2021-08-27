@@ -69,7 +69,10 @@ module Control.Monad.Logic.Sequence.Internal
 where
 
 import Control.Applicative
-import Control.Monad
+import Control.Monad hiding (liftM)
+#if !MIN_VERSION_base(4,8,0)
+import qualified Control.Monad as Monad
+#endif
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.Trans (MonadTrans(..))
@@ -279,18 +282,25 @@ single a = return (a :< mzero)
 
 instance Monad m => Functor (SeqT m) where
   {-# INLINEABLE fmap #-}
-  fmap f (SeqT q) = SeqT $ fmap (liftM (fmap f)) q
+  fmap f (SeqT q) = SeqT $ fmap (myliftM (fmap f)) q
   {-# INLINABLE (<$) #-}
-  x <$ SeqT q = SeqT $ fmap (liftM (x <$)) q
+  x <$ SeqT q = SeqT $ fmap (myliftM (x <$)) q
 
 instance Monad m => Applicative (SeqT m) where
   {-# INLINE pure #-}
   {-# INLINABLE (<*>) #-}
   pure = fromView . single
+
+#if MIN_VERSION_base(4,8,0)
+  fs <*> xs = fs >>= \f -> f <$> xs
+#else
   (<*>) = ap
+#endif
+
   (*>) = (>>)
+
 #if MIN_VERSION_base(4,10,0)
-  liftA2 = liftM2
+  liftA2 f xs ys = xs >>= \x -> f x <$> ys
   {-# INLINABLE liftA2 #-}
 #endif
 
@@ -314,7 +324,7 @@ cons a s = fromView (return (a :< s))
 
 -- | @consM m s = lift m <|> s@
 consM :: Monad m => m a -> SeqT m a -> SeqT m a
-consM m s = fromView (liftM (:< s) m)
+consM m s = fromView (myliftM (:< s) m)
 {-# INLINE consM #-}
 
 instance Monad m => Monad (SeqT m) where
@@ -416,7 +426,7 @@ chooseM = F.foldr consM empty
 -- | Perform all the actions in a 'SeqT' and gather the results.
 observeAllT :: Monad m => SeqT m a -> m [a]
 observeAllT (toView -> m) = m >>= go where
-  go (a :< t) = liftM (a:) (toView t >>= go)
+  go (a :< t) = myliftM (a:) (toView t >>= go)
   go _ = return []
 {-# INLINEABLE observeAllT #-}
 
@@ -434,7 +444,7 @@ observeManyT :: Monad m => Int -> SeqT m a -> m [a]
 observeManyT k m = toView m >>= go k where
   go n _ | n <= 0 = return []
   go _ Empty = return []
-  go n (a :< t) = liftM (a:) (observeManyT (n-1) t)
+  go n (a :< t) = myliftM (a:) (observeManyT (n-1) t)
 {-# INLINEABLE observeManyT #-}
 
 -- | Get the first result in a 'Seq', if there is one.
@@ -503,7 +513,7 @@ instance MFunctor SeqT where
 -- | This function is the implementation of 'hoist' for 'SeqT'. The passed
 -- function is required to be a monad morphism.
 hoistPre :: Monad m => (forall x. m x -> n x) -> SeqT m a -> SeqT n a
-hoistPre f (SeqT s) = SeqT $ fmap (f . liftM go) s
+hoistPre f (SeqT s) = SeqT $ fmap (f . myliftM go) s
   where
     go Empty = Empty
     go (a :< as) = a :< hoistPre f as
@@ -512,7 +522,7 @@ hoistPre f (SeqT s) = SeqT $ fmap (f . liftM go) s
 -- rather than for @m@. Like @hoist@, the passed function is required
 -- to be a monad morphism.
 hoistPost :: Monad n => (forall x. m x -> n x) -> SeqT m a -> SeqT n a
-hoistPost f (SeqT s) = SeqT $ fmap (liftM go . f) s
+hoistPost f (SeqT s) = SeqT $ fmap (myliftM go . f) s
   where
       go Empty = Empty
       go (a :< as) = a :< hoistPost f as
@@ -520,7 +530,7 @@ hoistPost f (SeqT s) = SeqT $ fmap (liftM go . f) s
 -- | A version of 'hoist' that works for arbitrary functions, rather
 -- than just monad morphisms.
 hoistPreUnexposed :: forall m n a. Monad m => (forall x. m x -> n x) -> SeqT m a -> SeqT n a
-hoistPreUnexposed f (toView -> m) = fromView $ f (liftM go m)
+hoistPreUnexposed f (toView -> m) = fromView $ f (myliftM go m)
   where
       go Empty = Empty
       go (a :< as) = a :< hoistPreUnexposed f as
@@ -529,7 +539,7 @@ hoistPreUnexposed f (toView -> m) = fromView $ f (liftM go m)
 -- than just monad morphisms. This should be preferred when the `Monad` instance
 -- for `n` is less expensive than that for `m`.
 hoistPostUnexposed :: forall m n a. (Monad m, Monad n) => (forall x. m x -> n x) -> SeqT m a -> SeqT n a
-hoistPostUnexposed f (toView -> m) = fromView $ liftM go (f m)
+hoistPostUnexposed f (toView -> m) = fromView $ myliftM go (f m)
   where
       go Empty = Empty
       go (a :< as) = a :< hoistPostUnexposed f as
@@ -541,7 +551,7 @@ instance MonadIO m => MonadIO (SeqT m) where
 instance MonadReader e m => MonadReader e (SeqT m) where
   -- TODO: write more thorough tests for this instance (issue #31)
   ask = lift ask
-  local f (SeqT q) = SeqT $ fmap (local f . liftM go) q
+  local f (SeqT q) = SeqT $ fmap (local f . myliftM go) q
     where
       go Empty = Empty
       go (a :< s) = a :< local f s
@@ -554,7 +564,7 @@ instance MonadState s m => MonadState s (SeqT m) where
 instance MonadError e m => MonadError e (SeqT m) where
   -- TODO: write tests for this instance (issue #31)
   throwError = lift . throwError
-  catchError (toView -> m) h = fromView $ (liftM go m) `catchError` (toView . h)
+  catchError (toView -> m) h = fromView $ (myliftM go m) `catchError` (toView . h)
     where
       go Empty = Empty
       go (a :< s) = a :< catchError s h
@@ -583,3 +593,12 @@ instance MonadZip m => MonadZip (SeqT m) where
           muabs = munzip asbs
           (as, bs) = muabs
 #endif
+
+#if MIN_VERSION_base(4,8,0)
+myliftM :: Functor m => (a -> b) -> m a -> m b
+myliftM = fmap
+#else
+myliftM :: Monad m => (a -> b) -> m a -> m b
+myliftM = Monad.liftM
+#endif
+{-# INLINE myliftM #-}
