@@ -111,7 +111,7 @@ heavy_interleave :: (MonadLogic m) => Int -> m ()
 heavy_interleave n = interleave heavy heavy
   where
     m = n `div` 2
-    heavy = heavy_right_assoc m
+    heavy = foldr (<|>) (return True) (replicate (m-1) (return False))
 
 heavy_fairbind :: (MonadLogic m) => Int -> m ()
 heavy_fairbind n = heavy >>= guard
