@@ -18,7 +18,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Main where
+module Main(main) where
 
 import Control.Applicative
 import Control.Monad.Trans
@@ -57,32 +57,40 @@ instance Monad m => MonadLogic (ListT m) where
 -- | [a].
 runList :: [a] -> [a]
 runList = id
+{-# INLINABLE runList #-}
 
 -- | ListT. Most basic Backtracking monad.
 runListT_I :: ListT Identity a -> [a]
 runListT_I = runIdentity . toList
+{-# INLINABLE runListT_I #-}
 
 -- | ListT ST.
 runListT_S :: (forall s. ListT (ST s) a) -> [a]
 runListT_S ma = runST (toList ma)
+{-# INLINABLE runListT_S #-}
 
 -- | Seq. Asymptotically fast but constants are large. No transformer version.
 runContainersSeq :: Seq a -> [a]
 runContainersSeq = F.toList
+{-# INLINABLE runContainersSeq #-}
 
 -- | Logic. Very fast Monad/MonadPlus operation. Slow interleave.
 runLogicT_I :: Orig.Logic a -> [a]
 runLogicT_I = Orig.observeAll
+{-# INLINABLE runLogicT_I #-}
 
 runLogicT_S :: (forall s. Orig.LogicT (ST s) a) -> [a]
 runLogicT_S ma = runST (Orig.observeAllT ma)
+{-# INLINABLE runLogicT_S #-}
 
 -- | SeqT from logict-sequence
 runLSeqT_I :: L.Seq a -> [a]
 runLSeqT_I = L.observeAll
+{-# INLINABLE runLSeqT_I #-}
 
 runLSeqT_S :: (forall s. L.SeqT (ST s) a) -> [a]
 runLSeqT_S ma = runST (L.observeAllT ma)
+{-# INLINABLE runLSeqT_S #-}
 
 ------------------------------------------------------------------------
 -- Measured codes
@@ -90,12 +98,14 @@ heavy_right_assoc :: (MonadLogic m) => Int -> m ()
 heavy_right_assoc n = heavy >>= guard
   where
     heavy = foldr (<|>) (return True) (replicate (n-1) (return False))
+{-# INLINE heavy_right_assoc #-}
 
 heavy_left_assoc :: (MonadLogic m) => Int -> m ()
 heavy_left_assoc n = heavy >>= guard
   where
     falses = F.foldl (<|>) empty (replicate n (return False))
     heavy = falses <|> return True
+{-# INLINE heavy_left_assoc #-}
 
 heavy_treelike :: (MonadLogic m) => Int -> m ()
 heavy_treelike n = go n True >>= guard
@@ -106,12 +116,14 @@ heavy_treelike n = go n True >>= guard
         let r = k `div` 2
             l = k - r
          in go l False <|> go r b
+{-# INLINE heavy_treelike #-}
 
 heavy_interleave :: (MonadLogic m) => Int -> m ()
-heavy_interleave n = interleave heavy heavy
+heavy_interleave n = interleave heavy heavy >>= guard
   where
     m = n `div` 2
     heavy = foldr (<|>) (return True) (replicate (m-1) (return False))
+{-# INLINE heavy_interleave #-}
 
 heavy_fairbind :: (MonadLogic m) => Int -> m ()
 heavy_fairbind n = heavy >>= guard
@@ -121,9 +133,11 @@ heavy_fairbind n = heavy >>= guard
     heavy =
       choose as >>- \k ->
         foldr (<|>) (return (k == 5)) (replicate m (return False))
+{-# INLINE heavy_fairbind #-}
 
 choose :: (Foldable t, Alternative f) => t a -> f a
 choose = getAlt . foldMap (Alt . pure)
+{-# INLINABLE choose #-}
 
 -- Copied from post by u/dagit on:
 --   https://www.reddit.com/r/haskell/comments/onwfr2/logictsequence_logict_empowered_by_reflection/
@@ -140,9 +154,11 @@ bfs t = go (pure t)
       case mb of
         Nothing -> empty
         Just (m, qs) -> pure (rootLabel m) <|> go (qs <|> choose (subForest m))
+{-# INLINABLE bfs #-}
 
 heavy_bfs :: (MonadLogic m) => Int -> m ()
 heavy_bfs n = bfs (makeTree n) >>= \k -> guard (k == n)
+{-# INLINE heavy_bfs #-}
 
 ------------------------------------------------------------------------
 -- Benchmark definition
@@ -168,6 +184,7 @@ forEachMonad targetLogic =
     bgroup "L.SeqT_I" (forEachSize $ nf (\n -> runLSeqT_I (targetLogic n))),
     bgroup "L.SeqT_S" (forEachSize $ nf (\n -> runLSeqT_S (targetLogic n)))
   ]
+{-# INLINE forEachMonad #-}
 
 forEachSize :: (Int -> Benchmarkable) -> [Benchmark]
 forEachSize f =
