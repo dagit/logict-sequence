@@ -18,7 +18,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Main where
+module Main(main) where
 
 import Control.Applicative
 import Control.Monad.Trans
@@ -90,12 +90,14 @@ heavy_right_assoc :: (MonadLogic m) => Int -> m ()
 heavy_right_assoc n = heavy >>= guard
   where
     heavy = foldr (<|>) (return True) (replicate (n-1) (return False))
+{-# INLINE heavy_right_assoc #-}
 
 heavy_left_assoc :: (MonadLogic m) => Int -> m ()
 heavy_left_assoc n = heavy >>= guard
   where
     falses = F.foldl (<|>) empty (replicate n (return False))
     heavy = falses <|> return True
+{-# INLINE heavy_left_assoc #-}
 
 heavy_treelike :: (MonadLogic m) => Int -> m ()
 heavy_treelike n = go n True >>= guard
@@ -106,12 +108,14 @@ heavy_treelike n = go n True >>= guard
         let r = k `div` 2
             l = k - r
          in go l False <|> go r b
+{-# INLINE heavy_treelike #-}
 
 heavy_interleave :: (MonadLogic m) => Int -> m ()
-heavy_interleave n = interleave heavy heavy
+heavy_interleave n = interleave heavy heavy >>= guard
   where
     m = n `div` 2
-    heavy = heavy_right_assoc m
+    heavy = foldr (<|>) (return True) (replicate (m-1) (return False))
+{-# INLINE heavy_interleave #-}
 
 heavy_fairbind :: (MonadLogic m) => Int -> m ()
 heavy_fairbind n = heavy >>= guard
@@ -121,10 +125,10 @@ heavy_fairbind n = heavy >>= guard
     heavy =
       choose as >>- \k ->
         foldr (<|>) (return (k == 5)) (replicate m (return False))
+{-# INLINE heavy_fairbind #-}
 
 choose :: (Foldable t, Alternative f) => t a -> f a
 choose = getAlt . foldMap (Alt . pure)
-
 -- Copied from post by u/dagit on:
 --   https://www.reddit.com/r/haskell/comments/onwfr2/logictsequence_logict_empowered_by_reflection/
 makeTree :: Int -> Tree Int
@@ -140,9 +144,11 @@ bfs t = go (pure t)
       case mb of
         Nothing -> empty
         Just (m, qs) -> pure (rootLabel m) <|> go (qs <|> choose (subForest m))
+{-# INLINE bfs #-}
 
 heavy_bfs :: (MonadLogic m) => Int -> m ()
 heavy_bfs n = bfs (makeTree n) >>= \k -> guard (k == n)
+{-# INLINE heavy_bfs #-}
 
 ------------------------------------------------------------------------
 -- Benchmark definition
@@ -168,6 +174,7 @@ forEachMonad targetLogic =
     bgroup "L.SeqT_I" (forEachSize $ nf (\n -> runLSeqT_I (targetLogic n))),
     bgroup "L.SeqT_S" (forEachSize $ nf (\n -> runLSeqT_S (targetLogic n)))
   ]
+{-# INLINE forEachMonad #-}
 
 forEachSize :: (Int -> Benchmarkable) -> [Benchmark]
 forEachSize f =
