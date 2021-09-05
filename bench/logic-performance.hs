@@ -57,40 +57,32 @@ instance Monad m => MonadLogic (ListT m) where
 -- | [a].
 runList :: [a] -> [a]
 runList = id
-{-# INLINABLE runList #-}
 
 -- | ListT. Most basic Backtracking monad.
 runListT_I :: ListT Identity a -> [a]
 runListT_I = runIdentity . toList
-{-# INLINABLE runListT_I #-}
 
 -- | ListT ST.
 runListT_S :: (forall s. ListT (ST s) a) -> [a]
 runListT_S ma = runST (toList ma)
-{-# INLINABLE runListT_S #-}
 
 -- | Seq. Asymptotically fast but constants are large. No transformer version.
 runContainersSeq :: Seq a -> [a]
 runContainersSeq = F.toList
-{-# INLINABLE runContainersSeq #-}
 
 -- | Logic. Very fast Monad/MonadPlus operation. Slow interleave.
 runLogicT_I :: Orig.Logic a -> [a]
 runLogicT_I = Orig.observeAll
-{-# INLINABLE runLogicT_I #-}
 
 runLogicT_S :: (forall s. Orig.LogicT (ST s) a) -> [a]
 runLogicT_S ma = runST (Orig.observeAllT ma)
-{-# INLINABLE runLogicT_S #-}
 
 -- | SeqT from logict-sequence
 runLSeqT_I :: L.Seq a -> [a]
 runLSeqT_I = L.observeAll
-{-# INLINABLE runLSeqT_I #-}
 
 runLSeqT_S :: (forall s. L.SeqT (ST s) a) -> [a]
 runLSeqT_S ma = runST (L.observeAllT ma)
-{-# INLINABLE runLSeqT_S #-}
 
 ------------------------------------------------------------------------
 -- Measured codes
@@ -137,8 +129,6 @@ heavy_fairbind n = heavy >>= guard
 
 choose :: (Foldable t, Alternative f) => t a -> f a
 choose = getAlt . foldMap (Alt . pure)
-{-# INLINABLE choose #-}
-
 -- Copied from post by u/dagit on:
 --   https://www.reddit.com/r/haskell/comments/onwfr2/logictsequence_logict_empowered_by_reflection/
 makeTree :: Int -> Tree Int
@@ -154,7 +144,7 @@ bfs t = go (pure t)
       case mb of
         Nothing -> empty
         Just (m, qs) -> pure (rootLabel m) <|> go (qs <|> choose (subForest m))
-{-# INLINABLE bfs #-}
+{-# INLINE bfs #-}
 
 heavy_bfs :: (MonadLogic m) => Int -> m ()
 heavy_bfs n = bfs (makeTree n) >>= \k -> guard (k == n)
