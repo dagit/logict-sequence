@@ -1,7 +1,5 @@
 {-# LANGUAGE CPP #-}
-#if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE Trustworthy #-}
-#endif
 -- We suppress this warning because otherwise GHC complains
 -- about the newtype constructor not being used.
 #if __GLASGOW_HASKELL__ >= 800

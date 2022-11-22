@@ -5,9 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 #endif
 
-#if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE Safe #-}
-#endif
 
 module Control.Monad.Logic.Sequence
 (

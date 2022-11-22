@@ -90,13 +90,11 @@ instance Foldable Queue where
       go q = case S.viewl q of
         EmptyL -> n
         h :< t -> c h (go t)
-#if MIN_VERSION_base(4,6,0)
   foldl' f b0 = \q -> go q b0
     where
       go q !b = case S.viewl q of
         EmptyL -> b
         h :< t -> go t (f b h)
-#endif
 
 instance T.Traversable Queue where
   traverse f = fmap fromList . go

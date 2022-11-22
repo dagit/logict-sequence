@@ -20,9 +20,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 #endif
 
-#if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE Trustworthy #-}
-#endif
 {-# OPTIONS_HADDOCK not-home #-}
 {- OPTIONS_GHC -ddump-simpl -dsuppress-coercions #-}
 
@@ -386,7 +384,7 @@ instance Monad m => Monoid (SeqT m a) where
   {-# INLINE mconcat #-}
   mempty = SeqT S.empty
   mconcat = F.asum
-#if !MIN_VERSION_base(4,9,0)
+#if !MIN_VERSION_base(4,11,0)
   {-# INLINE mappend #-}
   mappend = (<|>)
 #endif
