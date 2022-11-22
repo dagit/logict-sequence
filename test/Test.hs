@@ -95,7 +95,7 @@ simpleTestM = genTestM (Gen.integral $ Range.constant 0 5)
 listToQueue :: [a] -> Queue a
 listToQueue = foldl' (S.|>) S.empty
 
-genViewSized :: forall m a. MonadGen m => m a -> Size -> m (View TestM a)
+genViewSized :: forall m a. MonadGen m => m a -> Size -> m (ViewT TestM a)
 genViewSized _ sz | sz <= 1 = pure Empty
 genViewSized m sz = do
   a <- m
@@ -122,7 +122,7 @@ genSeqSized m sz = do
   goop <- traverse (fmap Identity <$> genViewSizedId m) part
   pure $ SeqT $ listToQueue goop
 
-genViewSizedId :: forall m a. MonadGen m => m a -> Size -> m (View Identity a)
+genViewSizedId :: forall m a. MonadGen m => m a -> Size -> m (ViewT Identity a)
 genViewSizedId _ sz | sz <= 1 = pure Empty
 genViewSizedId m sz = do
   a <- m
@@ -240,10 +240,10 @@ main = hspec $ do
       s <- forAll simpleSeqT
       Compat.fromLogicT (Compat.fromSeqT s) === s
 
-  describe "fromView" $ do
-    it "reverses toView" $ hedgehog $ do
+  describe "fromViewT" $ do
+    it "reverses toViewT" $ hedgehog $ do
       s <- forAll simpleSeqT
-      fromView (toView s) === s
+      fromViewT (toViewT s) === s
 
   describe "MonadReader instance" $ do
     it "passes the tests in https://github.com/Bodigrim/logict/issues/1" $ do

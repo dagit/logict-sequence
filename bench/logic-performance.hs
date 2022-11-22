@@ -15,6 +15,7 @@
 -- (5) SeqT m
 -------------------------------------------------------------------------
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -45,11 +46,13 @@ instance MonadLogic Seq where
     EmptyL -> return Nothing
     a :< as -> return (Just (a, as))
 
+#if !MIN_VERSION_list_t(1,0,5)
 instance Monad m => MonadLogic (ListT m) where
   msplit = lift . uncons
   interleave as bs = ListT $ uncons as >>= \case
     Nothing -> uncons bs
     Just (a,as') -> pure (Just (a, interleave bs as'))
+#endif
 
 ------------------------------------------------------------------------
 -- how to run MonadLogic instances

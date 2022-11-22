@@ -21,9 +21,13 @@ module Control.Monad.Logic.Sequence
   , pattern MkSeq
   , getSeq
 #endif
-  , View(..)
+  , ViewT(..)
+  , View
+  , viewT
   , view
+  , toViewT
   , toView
+  , fromViewT
   , fromView
   , cons
   , consM
