@@ -5,9 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 #endif
 
-#if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE Safe #-}
-#endif
 
 module Control.Monad.Logic.Sequence
 (
@@ -21,9 +19,13 @@ module Control.Monad.Logic.Sequence
   , pattern MkSeq
   , getSeq
 #endif
-  , View(..)
+  , ViewT(..)
+  , View
+  , viewT
   , view
+  , toViewT
   , toView
+  , fromViewT
   , fromView
   , cons
   , consM

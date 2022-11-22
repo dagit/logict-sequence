@@ -5,10 +5,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 #endif
-
-#if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE Safe #-}
-#endif
 
 module Control.Monad.Logic.Sequence.Internal.Queue
 (  Queue

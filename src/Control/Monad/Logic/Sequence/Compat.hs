@@ -15,13 +15,13 @@ observeT :: Monad m => SeqT m a -> m a
 #else
 observeT :: MonadFail m => SeqT m a -> m a
 #endif
-observeT (toView -> m) = m >>= go where
+observeT (toViewT -> m) = m >>= go where
   go (a :< _) = return a
   go Empty = fail "No results."
 {-# INLINE observeT #-}
 
 observe :: Seq a -> a
-observe (toView -> m) = case runIdentity m of
+observe (toViewT -> m) = case runIdentity m of
   a :< _ -> a
   Empty -> error "No results."
 {-# INLINE observe #-}
