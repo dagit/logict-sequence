@@ -49,7 +49,7 @@ appendSL f r = rotate f r []
 -- Precondition:
 -- |f| = |r| - 1
 rotate :: [a] -> SL a -> [a] -> [a]
-rotate [] (~SNil :> y) a = y : a
+rotate [] (_SNil :> y) a = y : a
 rotate (x : f) (r :> y) a = x : rotate f r (y : a)
 rotate _f _a _r  = error "Invariant |f| = |r| + |a| - 1 broken"
 
@@ -80,7 +80,7 @@ instance Sequence Queue where
     in RQ c SNil c
   RQ f r a |> x = queue f (r :> x) a
 
-  viewl (RQ [] ~SNil ~[]) = EmptyL
+  viewl (RQ [] _SNil _nil) = EmptyL
   viewl (RQ (h : t) f a) = h :< queue t f a
 
 instance Foldable Queue where
