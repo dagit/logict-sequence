@@ -1,4 +1,9 @@
 # Revision history for logict-sequence
+## 0.2.0.1 -- 2022-11-23
+
+* Fix a serious laziness bug in `<|>` and `>>=`. These were stricter than they
+  should be in some cases.
+
 ## 0.2     -- 2022-11-22
 
 * Rename things having to do with views, to enforce a consistent

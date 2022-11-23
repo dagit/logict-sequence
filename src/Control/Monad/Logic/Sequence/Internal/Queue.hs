@@ -41,7 +41,7 @@ import qualified Control.Monad.Logic.Sequence.Internal.ScheduledQueue as SQ
 
 data Queue a
   = Empty
-  | a :< {-# UNPACK #-} !(SQ.Queue (Queue a))
+  | a :< SQ.Queue (Queue a)
   deriving (Functor, F.Foldable, T.Traversable)
 
 instance Sequence Queue where
@@ -51,7 +51,6 @@ instance Sequence Queue where
   singleton a = a :< S.empty
   {-# INLINE (><) #-}
   Empty >< r = r
-  q >< Empty = q
   (a :< q) >< r = a :< (q |> r)
   {-# INLINE (|>) #-}
   l |> x = l >< singleton x
@@ -59,16 +58,13 @@ instance Sequence Queue where
   x <| r = singleton x >< r
   {-# INLINE viewl #-}
   viewl Empty     = EmptyL
-  viewl (x :< q0)  = x S.:< case viewl q0 of
-    EmptyL -> Empty
-    t S.:< q'  -> linkAll t q'
+  viewl (t :< q0) = t S.:< linkAll q0
     where
-    linkAll :: Queue a -> SQ.Queue (Queue a) -> Queue a
-    linkAll t@(y :< q) q' = case viewl q' of
-      EmptyL -> t
-      h S.:< t' -> y :< (q |> linkAll h t')
-    linkAll Empty _ = error "Invariant failure"
-
+    linkAll :: SQ.Queue (Queue a) -> Queue a
+    linkAll v = case viewl v of
+      EmptyL -> Empty
+      Empty S.:< t' -> linkAll t'
+      (x :< q) S.:< t' -> x :< (q |> linkAll t')
 
 #if MIN_VERSION_base(4,9,0)
 instance Semigroup (Queue a) where
