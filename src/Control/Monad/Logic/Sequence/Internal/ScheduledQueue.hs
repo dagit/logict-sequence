@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE BangPatterns #-}
-
+{-# LANGUAGE ExistentialQuantification #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -26,7 +26,6 @@ import Data.SequenceClass (Sequence, ViewL (..))
 import qualified Data.SequenceClass as S
 import Data.Foldable
 import qualified Data.Traversable as T
-import Control.Monad.Logic.Sequence.Internal.Any
 import qualified Control.Applicative as A
 
 #if !MIN_VERSION_base(4,8,0)
@@ -55,21 +54,21 @@ rotate (x : f) (r :> y) a = x : rotate f r (y : a)
 rotate _f _a _r  = error "Invariant |f| = |r| + |a| - 1 broken"
 
 -- | A scheduled Banker's Queue, as described by Okasaki.
-data Queue a = RQ ![a] !(SL a) ![Any]
+data Queue a = forall x. RQ ![a] !(SL a) ![x]
 -- Invariant: |f| = |r| + |a|
-  deriving Functor
-  -- We use 'Any' rather than an existential to allow GHC to unpack
-  -- queues. In particular, we want to unpack into the catenable queue
-  -- constructor.
 
-queue :: [a] -> SL a -> [Any] -> Queue a
+instance Functor Queue where
+  fmap f (RQ x y s) = RQ (fmap f x) (fmap f y) s
+  a <$ RQ x y s = RQ (a <$ x) (a <$ y) s
+
+queue :: [a] -> SL a -> [x] -> Queue a
 -- precondition : |f| = |r| + |a| - 1
 -- postcondition: |f| = |r| + |a|
 queue f r [] =
   let
     f' = appendSL f r
     {-# NOINLINE f' #-}
-  in RQ f' SNil (toAnyList f')
+  in RQ f' SNil f'
 queue f r (_h : t) = RQ f r t
 
 instance Sequence Queue where
@@ -78,7 +77,7 @@ instance Sequence Queue where
     let
       c = [x]
       {-# NOINLINE c #-}
-    in RQ c SNil (toAnyList c)
+    in RQ c SNil c
   RQ f r a |> x = queue f (r :> x) a
 
   viewl (RQ [] ~SNil ~[]) = EmptyL

@@ -1,6 +1,6 @@
 cabal-version:      >=1.10
 name:               logict-sequence
-version:            0.2
+version:            0.2.0.1
 
 -- A short (one-line) description of the package.
 synopsis:           A backtracking logic-programming monad with asymptotic improvements to msplit
@@ -43,7 +43,6 @@ library
                     , Control.Monad.Logic.Sequence.Internal
                     , Control.Monad.Logic.Sequence.Internal.Queue
                     , Control.Monad.Logic.Sequence.Internal.ScheduledQueue
-                    , Control.Monad.Logic.Sequence.Internal.Any
 
     -- Modules included in this library but not exported.
     -- other-modules:
