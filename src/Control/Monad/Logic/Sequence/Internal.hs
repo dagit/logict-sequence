@@ -328,7 +328,7 @@ instance Monad m => Alternative (SeqT m) where
   {-# INLINE empty #-}
   {-# INLINEABLE (<|>) #-}
   empty = SeqT S.empty
-  m <|> n = fromViewT (altViewT m n)
+  SeqT m <|> SeqT n = SeqT (m S.>< n)
 
 altViewT :: Monad m => SeqT m a -> SeqT m a -> m (ViewT m a)
 altViewT (toViewT -> m) n = m >>= \x -> case x of
