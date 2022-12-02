@@ -22,6 +22,14 @@
 
 {-# LANGUAGE Trustworthy #-}
 {-# OPTIONS_HADDOCK not-home #-}
+#if __GLASGOW_HASKELL__ >= 904
+-- We need this for now to work around
+-- https://gitlab.haskell.org/ghc/ghc/-/issues/22549
+-- which otherwise causes infinite loops in several
+-- instances.
+{-# OPTIONS_GHC -fno-dicts-strict #-}
+#endif
+
 {- OPTIONS_GHC -ddump-simpl -dsuppress-coercions #-}
 
 -- | Based on the LogicT improvements in the paper, Reflection without
