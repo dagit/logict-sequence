@@ -75,12 +75,11 @@ instance Sequence Queue where
   empty = Empty
   {-# INLINE singleton #-}
   singleton a = a :< S.empty
-  {-# INLINE (><) #-}
-  Empty >< r = r
-  (a :< q) >< r = a :< (q |> r)
-  {-# INLINE (|>) #-}
+  {-# INLINABLE (><) #-}
+  p >< q = p `append` q
+  {-# INLINABLE (|>) #-}
   l |> x = l >< singleton x
-  {-# INLINE (<|) #-}
+  {-# INLINABLE (<|) #-}
   x <| r = singleton x >< r
   {-# INLINE viewl #-}
   viewl Empty     = EmptyL
@@ -96,9 +95,25 @@ linkAll v = case viewl v of
     -- We check if v' is empty to avoid *unnecessarily* inserting empty
     -- queues. We're allowed to force v' here, because it came from viewing
     -- v; it's not been suspended lazily.
-    case viewl v' of
-      EmptyL -> q
-      _ -> q |> linkAll v'
+    if SQ.isEmpty v'
+      then q
+      else q |> linkAll v'
+
+append :: Queue a -> Queue a -> Queue a
+append Empty r = r
+append (a :< q) r = a :< (q |> r)
+{-# NOINLINE [0] append #-}
+
+-- append/append doesn't change asymptotics, since appending is
+-- always amortized O(1). However, it should cut down on thunk chains
+-- in tails. append/empty can theoretically reduce the order of growth,
+-- but only in extremely artificial situations. empty/append is the same
+-- thing we get from inlining append, but will happen earlier.
+{-# RULES
+"append/append" forall p q r. (p `append` q) `append` r = p `append` (q `append` r)
+"append/empty" forall p. p `append` Empty = p
+"empty/append" forall p. Empty `append` p = p
+ #-}
 
 #if MIN_VERSION_base(4,9,0)
 instance Semigroup (Queue a) where

@@ -214,7 +214,7 @@ type Seq = SeqT Identity
 
 fromViewT :: m (ViewT m a) -> SeqT m a
 fromViewT = SeqT . S.singleton
-{-# INLINE [1] fromViewT #-}
+{-# INLINABLE [1] fromViewT #-}
 
 fromView :: forall a. View a -> Seq a
 fromView = coerce (fromViewT :: Identity (View a) -> Seq a)
@@ -322,15 +322,19 @@ instance Monad m => Applicative (SeqT m) where
   (<*>) = ap
 #endif
 
-  {-# INLINEABLE (*>) #-}
-  (toViewT -> m) *> n = fromViewT $ m >>= \x -> case x of
-    Empty -> return Empty
-    _ :< t -> n `altViewT` (t *> n)
+  {-# INLINABLE (*>) #-}
+  (toViewT -> m) *> n = fromViewT $ thenViewT m n
 
 #if MIN_VERSION_base(4,10,0)
   liftA2 f xs ys = xs >>= \x -> f x <$> ys
   {-# INLINABLE liftA2 #-}
 #endif
+
+thenViewT :: Monad m => m (ViewT m a) -> SeqT m b -> m (ViewT m b)
+thenViewT m n = m >>= \x -> case x of
+  Empty -> return Empty
+  _ :< t -> toViewT n `altViewT` (t *> n)
+{-# INLINABLE thenViewT #-}
 
 instance Monad m => Alternative (SeqT m) where
   {-# INLINE empty #-}
@@ -338,12 +342,17 @@ instance Monad m => Alternative (SeqT m) where
   empty = SeqT S.empty
   SeqT m <|> SeqT n = SeqT (m S.>< n)
 
-altViewT :: Monad m => SeqT m a -> SeqT m a -> m (ViewT m a)
-altViewT (toViewT -> m) n = m >>= \x -> case x of
+-- |
+-- @
+-- altViewT s t = toViewT (fromViewT s <|> t)
+-- @
+--
+-- Question: is this actually good for optimization?
+altViewT :: Monad m => m (ViewT m a) -> SeqT m a -> m (ViewT m a)
+altViewT m n = m >>= \x -> case x of
   Empty -> toViewT n
-  h :< t -> return (h :< cat t n)
-    where cat (SeqT l) (SeqT r) = SeqT (l S.>< r)
-{-# INLINE altViewT #-}
+  h :< t -> return (h :< (t <|> n))
+{-# INLINABLE altViewT #-}
 
 -- | @cons a s = pure a <|> s@
 cons :: Monad m => a -> SeqT m a -> SeqT m a
@@ -357,17 +366,21 @@ consM m s = fromViewT (myliftM (:< s) m)
 
 instance Monad m => Monad (SeqT m) where
   {-# INLINE return #-}
-  {-# INLINEABLE (>>=) #-}
+  {-# INLINABLE (>>=) #-}
   return = pure
-  (toViewT -> m) >>= f = fromViewT $ m >>= \x -> case x of
-    Empty -> return Empty
-    h :< t -> f h `altViewT` (t >>= f)
+  (toViewT -> m) >>= f = fromViewT $ bindViewT m f
   (>>) = (*>)
 
 #if !MIN_VERSION_base(4,13,0)
   {-# INLINEABLE fail #-}
   fail = Fail.fail
 #endif
+
+bindViewT :: Monad m => m (ViewT m a) -> (a -> SeqT m b) -> m (ViewT m b)
+bindViewT m f = m >>= \x -> case x of
+  Empty -> return Empty
+  h :< t -> toViewT (f h) `altViewT` (t >>= f)
+{-# INLINABLE bindViewT #-}
 
 instance Monad m => Fail.MonadFail (SeqT m) where
   {-# INLINEABLE fail #-}
@@ -416,7 +429,7 @@ instance Monad m => MonadLogic (SeqT m) where
 
   ifte (toViewT -> t) th (toViewT -> el) = fromViewT $ t >>= viewT
     el
-    (\a s -> altViewT (th a) (s >>= th))
+    (\a s -> altViewT (toViewT (th a)) (s >>= th))
 
   once (toViewT -> m) = fromViewT $ m >>= viewT
     (return Empty)
