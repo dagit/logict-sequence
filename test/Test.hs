@@ -404,13 +404,11 @@ main = hspec $ do
       f :: Int -> [Int] <- Fun.forAllFn (Fun.fn (Gen.list (Range.linear 0 5) (Gen.int (Range.constant 0 10000))))
       foldMap f s === foldMap f (Compat.toLogicT s)
 
-#if __GLASGOW_HASKELL__ != 904
   describe "traverse" $ do
     it "works like LogicT" $ hedgehog $ do
       s <- forAll simpleSeq
       f :: Int -> Identity Int <- (Identity .) <$> Fun.forAllFn (Fun.fn (Gen.int (Range.constant 0 10000)))
       traverse f s === (Compat.fromLogicT <$> traverse f (Compat.toLogicT s))
-#endif
 
 -- -------
 -- Reimplementation of Control.Monad.Free without the need
