@@ -1,4 +1,12 @@
 # Revision history for logict-sequence
+## 0.2.0.2 -- 2022-12-06
+
+* Some of the laziness added in fixing the laziness bug was unnecessary.
+  Remove that, allowing scheduled queues to be unboxed once more.
+* Improve `RULES`, inlining, etc.
+* Work around a [GHC bug](https://gitlab.haskell.org/ghc/ghc/-/issues/22549)
+  relating to undecidable instances.
+
 ## 0.2.0.1 -- 2022-11-23
 
 * Fix a serious laziness bug in `<|>` and `>>=`. These were stricter than they
