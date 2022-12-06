@@ -21,7 +21,9 @@
 -----------------------------------------------------------------------------
 
 module Control.Monad.Logic.Sequence.Internal.ScheduledQueue
-  (Queue) where
+  ( Queue
+  , isEmpty
+  ) where
 import Data.SequenceClass (Sequence, ViewL (..))
 import qualified Data.SequenceClass as S
 import Data.Foldable
@@ -67,6 +69,9 @@ queue :: [a] -> SL a -> [x] -> Queue a
 queue f r [] =
   let
     f' = appendSL f r
+    -- We NOINLINE f' to make sure that walking the schedule actually forces
+    -- the front of the queue. GHC probably won't duplicate appendSL anyway,
+    -- but let's be sure.
     {-# NOINLINE f' #-}
   in RQ f' SNil f'
 queue f r (_h : t) = RQ f r t
@@ -76,8 +81,10 @@ instance Sequence Queue where
   singleton x =
     let
       c = [x]
-      {-# NOINLINE c #-}
     in RQ c SNil c
+  -- The special case for [] gives us better optimizations
+  -- for singleton catenable queues.
+  RQ [] _ _ |> x = S.singleton x
   RQ f r a |> x = queue f (r :> x) a
 
   viewl (RQ [] _SNil _nil) = EmptyL
@@ -94,6 +101,22 @@ instance Foldable Queue where
       go q !b = case S.viewl q of
         EmptyL -> b
         h :< t -> go t (f b h)
+#if MIN_VERSION_base(4,8,0)
+  null (RQ [] _SNil _nil) = True
+  null _ = False
+
+  -- Invariant: |f| = |r| + |a|. The length of the queue is
+  -- |f| + |r|
+  -- We can calculate that as either 2 * |r| + |a|
+  -- or 2 * |f| - a. I suspect the latter will give better
+  -- cache utilization.
+  length (RQ f _ a) = 2 * length f - length a
+#endif
+
+-- We have this to avoid fussing over `null` in GHC 7.8/base 4.7.
+isEmpty :: Queue a -> Bool
+isEmpty (RQ [] _SNil _nil) = True
+isEmpty _ = False
 
 instance T.Traversable Queue where
   traverse f = fmap fromList . go
@@ -103,4 +126,4 @@ instance T.Traversable Queue where
         h :< t -> A.liftA2 (:) (f h) (go t)
 
 fromList :: [a] -> Queue a
-fromList = foldl' (S.|>) S.empty
+fromList f = RQ f SNil f
