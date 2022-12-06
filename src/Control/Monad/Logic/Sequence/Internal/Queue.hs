@@ -80,7 +80,7 @@ instance Sequence Queue where
   {-# INLINABLE (|>) #-}
   l |> x = l >< singleton x
   {-# INLINABLE (<|) #-}
-  x <| r = singleton x >< r
+  x <| r = x :< singleton r
   {-# INLINE viewl #-}
   viewl Empty     = EmptyL
   viewl (x :< q0)  = x S.:< linkAll q0
@@ -99,11 +99,12 @@ linkAll' t@(y :< q) q' = case viewl q' of
   h S.:< t' -> y :< (q |> linkAll' h t')
 
 -- I experimented with writing RULES for append, but (short of an explicit
--- staged INLINE) I couldn't do so while getting it to inline into <|. That
--- makes me a bit nervous about other situations it might not inline, so I gave
--- up on those. It's unfortunate, because it seems likely that appends are
--- (slightly) better associated to the left or to the right (I haven't checked
--- which), and it would be nice to reassociate them whichever way is better.
+-- staged INLINE) I couldn't do so while getting it to inline into <| when the
+-- latter was defined x <| r = singleton x >< r. That made me a bit nervous
+-- about other situations it might not inline, so I gave up on those. It's
+-- unfortunate, because it seems likely that appends are (slightly) better
+-- associated to the left or to the right (I haven't checked which), and it
+-- would be nice to reassociate them whichever way is better.
 append :: Queue a -> Queue a -> Queue a
 append Empty r = r
 append (a :< q) r = a :< (q |> r)

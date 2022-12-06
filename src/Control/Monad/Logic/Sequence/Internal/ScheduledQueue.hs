@@ -27,7 +27,6 @@ import Data.SequenceClass (Sequence, ViewL (..))
 import qualified Data.SequenceClass as S
 import Data.Foldable
 import qualified Data.Traversable as T
-import Control.Monad.Logic.Sequence.Internal.Any
 import qualified Control.Applicative as A
 
 #if !MIN_VERSION_base(4,8,0)
@@ -55,15 +54,27 @@ rotate [] (_SNil :> y) a = y : a
 rotate (x : f) (r :> y) a = x : rotate f r (y : a)
 rotate _f _a _r  = error "Invariant |f| = |r| + |a| - 1 broken"
 
--- | A scheduled Banker's Queue, as described by Okasaki.
-data Queue a = RQ ![a] !(SL a) ![Any]
+-- | A scheduled banker's queue, as described by Okasaki. In theory, we only
+-- need a queue supporting constant /amortized/ time operations. In practice,
+-- once a queue gets large, linear-time pauses and cache effects relating to
+-- rebuilding start to hurt.
+data Queue a =
+  RQ ![a]    -- front (f)
+     !(SL a) -- rear (r)
+     ![a]  -- schedule (a)
 -- Invariant: |f| = |r| + |a|
   deriving Functor
-  -- We use 'Any' rather than an existential to allow GHC to unpack
-  -- queues. In particular, we want to unpack into the catenable queue
-  -- constructor.
+  -- We would much rather write
+  --
+  --   data Queue a = forall x. RQ ![a] !(SL a) ![x]
+  --
+  -- to guarantee we don't accidentally look at elements in the schedule.
+  -- Unfortuately, GHC can't currently unpack types with existentials, and
+  -- we want to unpack into the catenable queue constructor. We used to use
+  -- [Any], but the modern unsafeCoerce makes that produce rather messy core,
+  -- and I'm a bit concerned about the term sizes for inlining and such.
 
-queue :: [a] -> SL a -> [Any] -> Queue a
+queue :: [a] -> SL a -> [a] -> Queue a
 -- precondition : |f| = |r| + |a| - 1
 -- postcondition: |f| = |r| + |a|
 queue f r [] =
@@ -73,7 +84,7 @@ queue f r [] =
     -- the front of the queue. GHC probably won't duplicate appendSL anyway,
     -- but let's be sure.
     {-# NOINLINE f' #-}
-  in RQ f' SNil (toAnyList f')
+  in RQ f' SNil f'
 queue f r (_h : t) = RQ f r t
 
 instance Sequence Queue where
@@ -81,7 +92,7 @@ instance Sequence Queue where
   singleton x =
     let
       c = [x]
-    in RQ c SNil (toAnyList c)
+    in RQ c SNil c
   -- The special case for [] gives us better optimizations
   -- for singleton catenable queues.
   RQ [] _ _ |> x = S.singleton x
@@ -121,4 +132,4 @@ instance T.Traversable Queue where
         h :< t -> A.liftA2 (:) (f h) (go t)
 
 fromList :: [a] -> Queue a
-fromList f = RQ f SNil (toAnyList f)
+fromList f = RQ f SNil f
