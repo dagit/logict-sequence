@@ -43,6 +43,7 @@ library
                     , Control.Monad.Logic.Sequence.Internal
                     , Control.Monad.Logic.Sequence.Internal.Queue
                     , Control.Monad.Logic.Sequence.Internal.ScheduledQueue
+                    , Control.Monad.Logic.Sequence.Internal.Any
 
     -- Modules included in this library but not exported.
     -- other-modules:

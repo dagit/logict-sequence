@@ -52,7 +52,7 @@ import Data.Coerce (coerce)
 -- where the @Empty@ in the latter is an empty @ViewT@.
 data Queue a
   = Empty
-  | a :< SQ.Queue (Queue a)
+  | a :< {-# UNPACK #-} !(SQ.Queue (Queue a))
   deriving (F.Foldable, T.Traversable)
 
 instance Functor Queue where
@@ -83,37 +83,30 @@ instance Sequence Queue where
   x <| r = singleton x >< r
   {-# INLINE viewl #-}
   viewl Empty     = EmptyL
-  viewl (t :< q0) = t S.:< linkAll q0
+  viewl (x :< q0)  = x S.:< linkAll q0
 
--- We pull this out of viewl because we don't want to inline it
--- at every viewl call site.
 linkAll :: SQ.Queue (Queue a) -> Queue a
-linkAll v = case viewl v of
-  EmptyL -> Empty
-  Empty S.:< v' -> linkAll v'
-  (x :< q) S.:< v' -> x :<
-    -- We check if v' is empty to avoid *unnecessarily* inserting empty
-    -- queues. We're allowed to force v' here, because it came from viewing
-    -- v; it's not been suspended lazily.
-    if SQ.isEmpty v'
-      then q
-      else q |> linkAll v'
+linkAll q = case viewl q of
+    EmptyL -> Empty
+    t S.:< q'  -> linkAll' t q'
 
+linkAll' :: Queue a -> SQ.Queue (Queue a) -> Queue a
+linkAll' Empty q' = linkAll q'
+linkAll' t@(y :< q) q' = case viewl q' of
+  EmptyL -> t
+  -- Note: h could potentially be _|_, but that's okay because we don't force
+  -- the recursive call.
+  h S.:< t' -> y :< (q |> linkAll' h t')
+
+-- I experimented with writing RULES for append, but (short of an explicit
+-- staged INLINE) I couldn't do so while getting it to inline into <|. That
+-- makes me a bit nervous about other situations it might not inline, so I gave
+-- up on those. It's unfortunate, because it seems likely that appends are
+-- (slightly) better associated to the left or to the right (I haven't checked
+-- which), and it would be nice to reassociate them whichever way is better.
 append :: Queue a -> Queue a -> Queue a
 append Empty r = r
 append (a :< q) r = a :< (q |> r)
-{-# NOINLINE [0] append #-}
-
--- append/append doesn't change asymptotics, since appending is
--- always amortized O(1). However, it should cut down on thunk chains
--- in tails. append/empty can theoretically reduce the order of growth,
--- but only in extremely artificial situations. empty/append is the same
--- thing we get from inlining append, but will happen earlier.
-{-# RULES
-"append/append" forall p q r. (p `append` q) `append` r = p `append` (q `append` r)
-"append/empty" forall p. p `append` Empty = p
-"empty/append" forall p. Empty `append` p = p
- #-}
 
 #if MIN_VERSION_base(4,9,0)
 instance Semigroup (Queue a) where
