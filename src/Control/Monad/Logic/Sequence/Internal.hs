@@ -22,11 +22,12 @@
 
 {-# LANGUAGE Trustworthy #-}
 {-# OPTIONS_HADDOCK not-home #-}
-#if __GLASGOW_HASKELL__ >= 904
+#if __GLASGOW_HASKELL__ >= 902
 -- We need this for now to work around
--- https://gitlab.haskell.org/ghc/ghc/-/issues/22549
--- which otherwise causes infinite loops in several
--- instances.
+-- https://gitlab.haskell.org/ghc/ghc/-/issues/22549 which otherwise causes
+-- infinite loops in several instances. It's definitely needed for GHC 9.4; we
+-- do it for 9.2 as well just in case, as others have gotten loops with
+-- -fdicts-strict with that version.
 {-# OPTIONS_GHC -fno-dicts-strict #-}
 #endif
 

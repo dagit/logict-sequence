@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ExistentialQuantification #-}
+
 
 -----------------------------------------------------------------------------
 -- |
@@ -22,12 +22,12 @@
 
 module Control.Monad.Logic.Sequence.Internal.ScheduledQueue
   ( Queue
-  , isEmpty
   ) where
 import Data.SequenceClass (Sequence, ViewL (..))
 import qualified Data.SequenceClass as S
 import Data.Foldable
 import qualified Data.Traversable as T
+import Control.Monad.Logic.Sequence.Internal.Any
 import qualified Control.Applicative as A
 
 #if !MIN_VERSION_base(4,8,0)
@@ -56,14 +56,14 @@ rotate (x : f) (r :> y) a = x : rotate f r (y : a)
 rotate _f _a _r  = error "Invariant |f| = |r| + |a| - 1 broken"
 
 -- | A scheduled Banker's Queue, as described by Okasaki.
-data Queue a = forall x. RQ ![a] !(SL a) ![x]
+data Queue a = RQ ![a] !(SL a) ![Any]
 -- Invariant: |f| = |r| + |a|
+  deriving Functor
+  -- We use 'Any' rather than an existential to allow GHC to unpack
+  -- queues. In particular, we want to unpack into the catenable queue
+  -- constructor.
 
-instance Functor Queue where
-  fmap f (RQ x y s) = RQ (fmap f x) (fmap f y) s
-  a <$ RQ x y s = RQ (a <$ x) (a <$ y) s
-
-queue :: [a] -> SL a -> [x] -> Queue a
+queue :: [a] -> SL a -> [Any] -> Queue a
 -- precondition : |f| = |r| + |a| - 1
 -- postcondition: |f| = |r| + |a|
 queue f r [] =
@@ -73,7 +73,7 @@ queue f r [] =
     -- the front of the queue. GHC probably won't duplicate appendSL anyway,
     -- but let's be sure.
     {-# NOINLINE f' #-}
-  in RQ f' SNil f'
+  in RQ f' SNil (toAnyList f')
 queue f r (_h : t) = RQ f r t
 
 instance Sequence Queue where
@@ -81,7 +81,7 @@ instance Sequence Queue where
   singleton x =
     let
       c = [x]
-    in RQ c SNil c
+    in RQ c SNil (toAnyList c)
   -- The special case for [] gives us better optimizations
   -- for singleton catenable queues.
   RQ [] _ _ |> x = S.singleton x
@@ -113,11 +113,6 @@ instance Foldable Queue where
   length (RQ f _ a) = 2 * length f - length a
 #endif
 
--- We have this to avoid fussing over `null` in GHC 7.8/base 4.7.
-isEmpty :: Queue a -> Bool
-isEmpty (RQ [] _SNil _nil) = True
-isEmpty _ = False
-
 instance T.Traversable Queue where
   traverse f = fmap fromList . go
     where
@@ -126,4 +121,4 @@ instance T.Traversable Queue where
         h :< t -> A.liftA2 (:) (f h) (go t)
 
 fromList :: [a] -> Queue a
-fromList f = RQ f SNil f
+fromList f = RQ f SNil (toAnyList f)
